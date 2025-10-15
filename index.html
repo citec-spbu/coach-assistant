@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <head>
     <meta charset="UTF-8" />
-    <title>Загрузка и воспроизведение видео</title>
-    
+    <title>Главная страница</title>
+    <script src="timepicker.js"></script>
 </head>
 <body>
+
   <!--Загрузка видео на сайт -->
    <input type="file" accept="video/*" id="videoInput" />
 <video id="videoPlayer"  controls width="640" height="360" style="display:none;"></video>
@@ -24,5 +25,28 @@
     videoPlayer.play(); 
    });
 </script>
+
+  </br>
+  <div id="timePickerStart" class="time-picker">
+    
+    <script>
+      const picker_start = new TimePicker('timePickerStart', {
+        name: "Start",
+        defaultValue: '00:00:00.000',
+        onChange: (time) => console.log('Time changed:', time)
+      });
+    </script>
+  </div>
+  
+  <div id="timePickerEnd" class="time-picker">
+    <script>
+      const picker_end = new TimePicker('timePickerEnd', {
+        name: "End&nbsp",
+        defaultValue: '00:00:00.000',
+        onChange: (time) => console.log('Time changed:', time)
+      });
+    </script>
+  </div>
+
 </body>
 </html>
