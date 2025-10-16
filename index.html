@@ -3,29 +3,14 @@
     <meta charset="UTF-8" />
     <title>Главная страница</title>
     <script src="timepicker.js"></script>
+    <script src="handlevideofile.js"></script>
 </head>
 <body>
 
-  <!--Загрузка видео на сайт -->
-   <input type="file" accept="video/*" id="videoInput" />
-<video id="videoPlayer"  controls width="640" height="360" style="display:none;"></video>
+<!--Загрузка видео на сайт -->
+<input type="file" accept="video/*" id="videoInput" onchange="handleVideoFile(this.files)"/>
+<video id="videoPlayer"  controls muted width="640" height="360" style="display:none;" ></video>
 <div id="message"></div>
-<!--скрипт запускающий видео-->
-<script>
-  const videoInput = document.getElementById('videoInput');
-  const videoPlayer = document.getElementById('videoPlayer');
-  const message = document.getElementById('message');
-  videoInput.addEventListener('change', () => {
-    const file = videoInput.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    videoPlayer.src = url;
-    videoPlayer.style.display = 'block';
-    videoPlayer.load();
-    videoPlayer.play(); 
-   });
-</script>
-
   </br>
   <div id="timePickerStart" class="time-picker">
     
