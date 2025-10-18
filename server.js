@@ -1,7 +1,8 @@
 const Koa = require('koa');
 const path = require('path');
 const serve = require('koa-static');
-const Router = require('koa-router')
+const Router = require('koa-router');
+
 const staticDirPath = path.join(__dirname, '');
 const nodeModulesDirPath = path.join(__dirname, 'node_modules');
 

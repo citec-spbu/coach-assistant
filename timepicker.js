@@ -49,4 +49,10 @@ class TimePicker {
         this.value = `${h}:${m}:${s}.${ms}`;
         this.onChange(this.value);
     }
+    getTimeInSeconds() {
+        const [time, ms] = this.value.split('.');
+        const [h, m, s] = time.split(':');
+        const seconds = parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s);
+        return seconds + ms / 1000;
+    }
 }

@@ -4,6 +4,8 @@
     <title>Главная страница</title>
     <script src="timepicker.js"></script>
     <script src="handlevideofile.js"></script>
+    <script type="module" src="videocut.js"></script>
+
 </head>
 <body>
 
@@ -32,6 +34,45 @@
       });
     </script>
   </div>
+
+  <div id="videoCut" class="video-cut">
+    <script type="module">
+        import { trimVideo } from './videocut.js';
+        async function cutVideo() {
+          try {
+            const videoFile = document.getElementById("videoInput").files[0];
+            const startTime = picker_start.getTimeInSeconds();
+            const endTime = picker_end.getTimeInSeconds();
+            const blob = await trimVideo(videoFile, startTime, endTime);
+            const blobUrl = URL.createObjectURL(blob);
+
+
+            console.log('Blob size:', blob.size, 'bytes');
+            console.log('Blob type:', blob.type);
+            console.log("URL", blobUrl);
+
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = 'output.mp4';
+            document.body.appendChild(a);
+            a.click();
+            
+            document.body.removeChild(a);
+            URL.revokeObjectURL(blobUrl);
+          }
+          catch (error) {
+            console.error('Ошибка при обрезке видео:', error);
+          }
+        }
+        document.getElementById("cutButton").addEventListener('click', cutVideo);
+
+
+
+    </script>
+    <button type="button" id="cutButton">Обрезать видео</button>
+
+  </div>
+
 
 </body>
 </html>
