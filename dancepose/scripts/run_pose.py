@@ -34,7 +34,7 @@ def main(cfg_path: str):
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     log.log(f"Video info: {W}x{H}, fps={fps}, frames={total}")
 
-    # 初始化推理器
+    # Initialize the inference engine
     pe = PoseExtractor(
         model_name=cfg["model_name"],
         device=str(cfg.get("device", "0")),
@@ -48,7 +48,7 @@ def main(cfg_path: str):
 
     jsonl = JsonlWriter(out_dir / "poses.jsonl")
 
-    # 可视化输出
+    # Visual Output
     save_overlay = bool(cfg.get("save_overlay", True))
     overlay_path = out_dir / "overlay.mp4"
     writer = None
@@ -95,7 +95,6 @@ def main(cfg_path: str):
 
             if save_overlay:
                 kps_vis = kps_xyc.copy()
-                # 仅用于可视化做轻微平滑
                 kps_vis = smooth.apply(kps_vis)
                 frame = draw_pose(frame, kps_vis, bbox=rec["bbox"], kp_thresh=kp_thresh,
                                   line_thickness=line_thickness, point_radius=point_radius)
