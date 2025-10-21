@@ -3,7 +3,7 @@ import numpy as np
 from ultralytics import YOLO
 
 def select_largest_box(boxes_xywh):
-    """选择面积最大的框返回其索引；若无框则返回 -1"""
+    """Select the box with the largest area and return its index; return -1 if there is no box"""
     if boxes_xywh is None or len(boxes_xywh) == 0:
         return -1
     areas = boxes_xywh[:, 2] * boxes_xywh[:, 3]
@@ -15,7 +15,7 @@ class PoseExtractor:
         self.kw = dict(device=device, imgsz=imgsz, conf=conf, iou=iou, vid_stride=vid_stride)
 
     def infer_frame(self, frame):
-        """对单帧推理，返回 (valid, bbox_xywh, keypoints_xyc[J,3], kp_score_mean)"""
+        """For single-frame inference, return (valid, bbox_xywh, keypoints_xyc[J,3], kp_score_mean)"""
         res = self.model.predict(frame, verbose=False, **self.kw)[0]
         if res is None or res.boxes is None or len(res.boxes) == 0:
             return False, None, None, 0.0
