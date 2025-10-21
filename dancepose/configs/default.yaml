@@ -1,0 +1,19 @@
+# 基础输入输出
+video_path: "inputs/gBR_sFM_c01_d04_mBR4_ch05.mp4"
+output_dir: "outputs"
+
+# 模型与推理
+model_name: "D:/WorkSoftware/pycharm/PyCharm 2024.1.3/projects/dancepose/models/yolov8s-pose.pt"   # 可选 yolov8n/s/m/l/x-pose.pt
+device: "0"                     # GPU: "0" 或 "cpu"
+imgsz: 640
+conf: 0.25
+iou: 0.50
+vid_stride: 1                   # 每隔几帧推理，1 表示逐帧
+
+# 可视化
+save_overlay: true
+overlay_fps: null               # null=沿用源视频FPS
+kp_score_thresh: 0.35
+line_thickness: 2
+point_radius: 3
+smooth_window: 5                # 仅用于 overlay 的轻微平滑；0=不平滑
