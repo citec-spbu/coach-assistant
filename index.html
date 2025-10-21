@@ -38,6 +38,22 @@
   <div id="videoCut" class="video-cut">
     <script type="module">
         import { trimVideo } from './videocut.js';
+
+        async function uploadBlob(blob, filename) {
+          const formData = new FormData();
+          formData.append('video', blob, filename);
+          const response = await fetch(`http://localhost:3000/upload/${filename}`, {
+            method: 'POST',
+            body: formData
+          });
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Ошибка загрузки');
+          }
+
+          return await response.json();
+        }
+
         async function cutVideo() {
           try {
             const videoFile = document.getElementById("videoInput").files[0];
@@ -51,13 +67,12 @@
             console.log('Blob type:', blob.type);
             console.log("URL", blobUrl);
 
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = 'output.mp4';
-            document.body.appendChild(a);
-            a.click();
-            
-            document.body.removeChild(a);
+            const uuid = blobUrl.split('/').pop();
+
+            const filename = `${uuid}.mp4`;
+            const result = await uploadBlob(blob, filename);
+            console.log(result);
+            alert(`Файл загружен: uploads/${filename}`);
             URL.revokeObjectURL(blobUrl);
           }
           catch (error) {
@@ -65,8 +80,6 @@
           }
         }
         document.getElementById("cutButton").addEventListener('click', cutVideo);
-
-
 
     </script>
     <button type="button" id="cutButton">Обрезать видео</button>
