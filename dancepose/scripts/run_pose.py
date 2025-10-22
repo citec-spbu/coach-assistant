@@ -34,7 +34,7 @@ def main(cfg_path: str):
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     log.log(f"Video info: {W}x{H}, fps={fps}, frames={total}")
 
-    # Initialize the inference engine
+    #Инициализируем инференс
     pe = PoseExtractor(
         model_name=cfg["model_name"],
         device=str(cfg.get("device", "0")),
@@ -48,9 +48,11 @@ def main(cfg_path: str):
 
     jsonl = JsonlWriter(out_dir / "poses.jsonl")
 
-    # Visual Output
+    #Визуализация результатов
     save_overlay = bool(cfg.get("save_overlay", True))
-    overlay_path = out_dir / "overlay.mp4"
+    #Генерируем уникальный путь для визуализации
+    video_name = Path(video_path).stem
+    overlay_path = out_dir / f"overlay_{video_name}.mp4"
     writer = None
     if save_overlay:
         ov_fps = fps if cfg.get("overlay_fps") in (None, 0) else float(cfg["overlay_fps"])
@@ -120,11 +122,15 @@ def main(cfg_path: str):
     log.log(f"poses.jsonl = {out_dir/'poses.jsonl'}")
     if save_overlay:
         log.log(f"overlay.mp4 = {overlay_path}")
+        return str(overlay_path)
     log.flush()
+    return None
 
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cfg", type=str, default="D:/WorkSoftware/pycharm/PyCharm 2024.1.3/projects/dancepose/default.yaml")
+    ap.add_argument("--cfg", type=str, default="C:/Users/buzov/Downloads/coach-assistant-feature-dancepose/coach-assistant-feature-dancepose/dancepose/default.yaml")
     args = ap.parse_args()
-    main(args.cfg)
+    result_path = main(args.cfg)
+    if result_path:
+        print(f"\nПроцесс выделения поз завершен. Видео доступно по пути: {result_path}")
