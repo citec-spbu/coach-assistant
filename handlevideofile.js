@@ -24,6 +24,8 @@ function handleVideoFile(files) {
       };
 
       message.textContent = "Видео загружено.";
+      console.log('Duration', tmpVideo.duration);
+      document.getElementById('timePickerEnd').timePicker.setTime(tmpVideo.duration);
     } else {
       alert(`Неправильное разрешение видео: ${tmpVideo.videoWidth}x${tmpVideo.videoHeight}px. Требуется 1920x1080px.`);
       message.textContent = "Ошибка: неправильное разрешение видео.";

@@ -18,7 +18,7 @@
     
     <script>
       const picker_start = new TimePicker('timePickerStart', {
-        name: "Start",
+        name: "Start (чч:мм:сс.млс)",
         defaultValue: '00:00:00.000',
         onChange: (time) => console.log('Time changed:', time)
       });
@@ -28,7 +28,7 @@
   <div id="timePickerEnd" class="time-picker">
     <script>
       const picker_end = new TimePicker('timePickerEnd', {
-        name: "End&nbsp",
+        name: "End &nbsp(чч:мм:сс.млс)",
         defaultValue: '00:00:00.000',
         onChange: (time) => console.log('Time changed:', time)
       });
@@ -82,7 +82,7 @@
         document.getElementById("cutButton").addEventListener('click', cutVideo);
 
     </script>
-    <button type="button" id="cutButton">Обрезать видео</button>
+    <button type="button" id="cutButton">Отправить</button>
 
   </div>
 

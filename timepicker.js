@@ -1,6 +1,7 @@
 class TimePicker {
     constructor(elementId, options = {}) {
         this.element = document.getElementById(elementId);
+        this.element.timePicker = this;
         this.title = options.name || "";
         this.value = options.defaultValue || '00:00:00.000';
         this.onChange = options.onChange || (() => {});
@@ -49,6 +50,34 @@ class TimePicker {
         this.value = `${h}:${m}:${s}.${ms}`;
         this.onChange(this.value);
     }
+
+    setTime(duration) {
+        // перевод в миллисекунды
+        let totalMs = Math.floor(duration * 1000); 
+    
+        const hours = Math.floor(totalMs / 3600000);
+        totalMs %= 3600000;
+        
+        const minutes = Math.floor(totalMs / 60000);
+        totalMs %= 60000;
+        
+        const seconds = Math.floor(totalMs / 1000);
+        const milliseconds = totalMs % 1000;
+
+        let h = String(hours).padStart(2, '0');
+        let m = String(minutes).padStart(2, '0');
+        let s = String(seconds).padStart(2, '0');
+        let ms = String(milliseconds || 0).padStart(3, '0');
+
+        this.inputs.hours.value = hours;
+        this.inputs.minutes.value = minutes;
+        this.inputs.seconds.value = seconds;
+        this.inputs.milliseconds.value = milliseconds;
+
+        this.value = `${h}:${m}:${s}.${ms}`;
+        this.onChange(this.value);
+    }
+
     getTimeInSeconds() {
         const [time, ms] = this.value.split('.');
         const [h, m, s] = time.split(':');
