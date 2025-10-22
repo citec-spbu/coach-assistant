@@ -17,6 +17,7 @@ Web: JavaScript, HTML, CSS, Vue.js, Python, FastAPI, Node.jsx, Koa
 - npm
 
 ## Установка зависимостей
+В корневой папке проекта выполнить:
 ```
 npm install
 ```
