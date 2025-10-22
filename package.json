@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "fs-extra": "^11.3.2",
+    "koa": "^3.0.2",
+    "koa-body": "^6.0.1",
+    "@koa/router": "^14.0.0",
+    "koa-static": "^5.0.0"
+  }
+}
