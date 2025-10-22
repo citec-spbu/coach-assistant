@@ -10,3 +10,17 @@
 
 ### Технический стек:
 Web: JavaScript, HTML, CSS, Vue.js, Python, FastAPI, Node.jsx, Koa
+
+## Требования
+
+- [Node.js](https://nodejs.org/) (версия 22.x или выше)
+- npm
+
+## Установка зависимостей
+```
+npm install
+```
+### Запуск
+```
+node server.js
+```
