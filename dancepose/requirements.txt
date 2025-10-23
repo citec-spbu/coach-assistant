@@ -1,0 +1,19 @@
+# Core frameworks
+torch>=2.2.0
+torchvision>=0.17.0
+ultralytics>=8.1.0
+
+# Computer vision & data processing
+opencv-python>=4.8.0
+numpy>=1.25.0
+pyyaml>=6.0
+
+# Utilities
+tqdm>=4.66.0
+pandas>=2.1.0
+
+# (Optional, for visualization and debugging)
+matplotlib>=3.8.0
+
+# (Optional, for JSON line output)
+orjson>=3.9.10
