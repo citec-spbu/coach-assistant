@@ -17,10 +17,11 @@ It serves as the foundation for motion analysis and performance evaluation in th
 
 ## How to Use
 
-1. Open the configuration file `configs/default.yaml` and modify paths for your video input and model weights if necessary.  
-2. Run the following command:
-   ```bash
-   python scripts/run_pose.py --cfg configs/default.yaml
+1. Install the dependencies listed in the requirements section.
+2. The data I used comes from this dataset:
+https://google.github.io/aistplusplus_dataset/factsfigures.html
+3. Open the configuration file 'configs/default.yaml' and modify paths for your video input and model weights if necessary.  
+4. Run run_pose.py
 
 ---
 
