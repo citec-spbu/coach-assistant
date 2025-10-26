@@ -14,8 +14,6 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-
-
 const server = new Koa();
 
 server.use(koaBody({
@@ -23,12 +21,16 @@ server.use(koaBody({
   formidable: {
     uploadDir: uploadDir,
     keepExtensions: true,
-    maxFileSize: 100 * 1024 * 1024, //100 MB
+    maxFileSize: 100 * 1024 * 1024, // 100 MB
   }
 }));
 
 const router = new Router();
 
+// Для хранения информации о статусах видео
+const videoStatusMap = new Map();
+
+// Роут для загрузки видео
 router.post('/upload/:filename', async (ctx) => {
   try {
     const { filename } = ctx.params;
@@ -58,6 +60,17 @@ router.post('/upload/:filename', async (ctx) => {
     await fs.move(file.filepath, destPath, { overwrite: true });
 
     console.log('Файл загружен:', destPath);
+    
+    
+    const videoUrl = `http://localhost:3000/uploads/${filename}`;
+
+    // Отправка URL видео на FastAPI для обработки
+    try {
+      const fastapiResponse = await axios.post('http://fastapi-server:5000/api/send', { url: videoUrl });
+      console.log('FastAPI ответил:', fastapiResponse.data);
+    } catch (error) {
+      console.error('Ошибка отправки видео в FastAPI:', error.message);
+    }
 
     ctx.status = 200;
     ctx.body = {
@@ -72,6 +85,56 @@ router.post('/upload/:filename', async (ctx) => {
     ctx.status = 500;
     ctx.body = { error: error.message };
   }
+});
+
+// Прием URL видео от FastAPI, начало обработки
+router.post('/api/send', async (ctx) => {
+  const videoUrl = ctx.request.body.url;
+  if (!videoUrl) {
+    ctx.status = 400;
+    ctx.body = { error: 'URL видео обязателен' };
+    return;
+  }
+
+  videoStatusMap.set(videoUrl, { status: 'processing', download_url: null });
+
+  ctx.status = 200;
+  ctx.body = { message: 'Видео получено и в процессе обработки' };
+});
+
+// Получение статуса и информации по видео
+router.get('/api/get', async (ctx) => {
+  const videoUrl = ctx.query.url;
+  if (!videoUrl) {
+    ctx.status = 400;
+    ctx.body = { error: 'URL видео обязателен' };
+    return;
+  }
+
+  const info = videoStatusMap.get(videoUrl);
+  if (!info) {
+    ctx.status = 404;
+    ctx.body = { error: 'Информация по видео не найдена' };
+    return;
+  }
+
+  ctx.status = 200;
+  ctx.body = info;
+});
+
+// Получение результата обработки с FastAPI
+router.post('/api/result', async (ctx) => {
+  const { status, upload_url, download_url } = ctx.request.body;
+  if (!status || !upload_url) {
+    ctx.status = 400;
+    ctx.body = { error: 'Status и upload_url обязательны' };
+    return;
+  }
+
+  videoStatusMap.set(upload_url, { status, download_url: download_url || null });
+
+  ctx.status = 200;
+  ctx.body = { message: 'Результат обработки принят' };
 });
 
 router.get('/result/:filename', async ctx => {});
