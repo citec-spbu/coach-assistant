@@ -23,5 +23,5 @@ npm install
 ```
 ### Запуск
 ```
-node server.js
+npm run start
 ```
