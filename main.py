@@ -8,6 +8,16 @@ import yaml
 
 import model_simulation
 
+
+import logging
+
+# Configure basic logging to a file named 'app.log'
+# The filemode='w' will overwrite the file each time the script runs.
+# Use filemode='a' (default) to append to the file.
+logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+
 def dir_from_yaml(yaml_file):
     with open(yaml_file, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -43,10 +53,10 @@ async def safe_process(upload_url: str):
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "done",
                 "upload_url": upload_url,
-                "download_url": str(PROCESSED_DIR / result),
+                "download_url": str(PROCESSED_DIR) + '/' + str(result),
             })
     except Exception as e:
-        print(str(e))
+        logging.error(str(e))
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "failed",
@@ -57,7 +67,7 @@ async def safe_process(upload_url: str):
 
 @app.post("/api/send/", status_code=204)  # No content
 async def post_path(url: UrlBody, background_task: BackgroundTasks):
-    print("Получен URL для обработки:", url.upload_url)
+    print("URL for processing:", url.upload_url)
     background_task.add_task(safe_process, url.upload_url)
     async with httpx.AsyncClient() as client:
         # Отправляем статус 'in progress' на KOA_WEBHOOK_RESULT
