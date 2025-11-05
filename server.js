@@ -63,11 +63,11 @@ router.post('/upload/:filename', async (ctx) => {
     console.log('Файл загружен:', destPath);
     
     
-    const videoUrl = `http://localhost:3000/uploads/${filename}`;
-
+    //const videoUrl = `http://localhost:3000/uploads/${filename}`;
+    const videoPath = destPath;
     // Отправка URL видео на FastAPI для обработки
     try {
-      const fastapiResponse = await axios.post('http://127.0.0.1:8000/api/send', { upload_url: videoUrl });
+      const fastapiResponse = await axios.post('http://127.0.0.1:8000/api/send', { upload_url: videoPath });
       console.log('FastAPI ответил:', fastapiResponse.data);
     } catch (error) {
       if (error.response) {
@@ -135,7 +135,7 @@ router.get('/api/get', async (ctx) => {
 // Получение результата обработки с FastAPI
 router.post('/api/result', async (ctx) => {
   const { status, upload_url, download_url } = ctx.request.body;
-  console.log("status = ",status,"upload_url = ",upload_url);
+  console.log("status = ",status,"upload_url = ",upload_url, "download = ", download_url);
   if (!status || !upload_url) {
     ctx.status = 400;
     ctx.body = { error: 'Status и upload_url обязательны' };
