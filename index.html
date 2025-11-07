@@ -11,8 +11,15 @@
 
 <!--Загрузка видео на сайт -->
 <input type="file" accept="video/*" id="videoInput" onchange="handleVideoFile(this.files)"/>
-<video id="videoPlayer"  controls muted width="640" height="360" style="display:none;" ></video>
+<video id="videoPlayer" width="640" height="360" style="display:none;" ></video>
 <div id="message"></div>
+<div id="controls">
+  <button id="playPauseBtn">Play</button>
+  <input type="range" id="seekBar" min="0" max="100" step="0.001" value="0"/>
+  <span id="timeDisplay">00:00.000 / 00:00.000</span>
+</div>
+<div id="message"></div>
+<script src="videoPlayer.js"></script>
   </br>
   <div id="timePickerStart" class="time-picker">
     
