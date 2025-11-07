@@ -1,17 +1,52 @@
-import os, cv2, yaml, math
+import os, sys, cv2, yaml, math
 import numpy as np
-import torch
 from pathlib import Path
+
+# Добавляем путь к родительской папке для импорта src
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from src.utils.io_utils import ensure_dir, JsonlWriter, SimpleLogger
 from src.inference.pose_infer import PoseExtractor
 from src.viz.overlay import draw_pose, SmoothBuffer
 
-def main(cfg_path: str):
-    with open(cfg_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-
-    video_path = cfg["video_path"]
-    out_dir = Path(cfg["output_dir"])
+def main(cfg_path: str = None, video_path: str = None, output_dir: str = None):
+    """
+    Основная функция для извлечения поз из видео.
+    
+    Args:
+        cfg_path: путь к YAML конфигу (старый способ)
+        video_path: прямой путь к видео (новый способ)
+        output_dir: директория для сохранения результатов (новый способ)
+    """
+    # Если передан конфиг - используем его
+    if cfg_path is not None:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        video_path = cfg["video_path"]
+        out_dir = Path(cfg["output_dir"])
+    # Иначе используем прямые параметры
+    elif video_path is not None and output_dir is not None:
+        out_dir = Path(output_dir)
+        # Создаём минимальный конфиг с дефолтными значениями
+        # Принудительно используем CPU (безопасный вариант)
+        cfg = {
+            "video_path": video_path,
+            "output_dir": output_dir,
+            "model_name": "yolov8m-pose.pt",
+            "device": "cpu",  # Всегда используем CPU
+            "imgsz": 640,
+            "conf": 0.25,
+            "iou": 0.5,
+            "vid_stride": 1,
+            "save_overlay": True,
+            "overlay_fps": 0,
+            "smooth_window": 5,
+            "kp_score_thresh": 0.35,
+            "line_thickness": 2,
+            "point_radius": 3,
+        }
+    else:
+        raise ValueError("Необходимо передать либо cfg_path, либо (video_path + output_dir)")
     ensure_dir(out_dir)
 
     log = SimpleLogger(out_dir / "run.log")
@@ -37,14 +72,14 @@ def main(cfg_path: str):
     #Инициализируем инференс
     pe = PoseExtractor(
         model_name=cfg["model_name"],
-        device=str(cfg.get("device", "0")),
+        device=str(cfg.get("device", "cpu")),
         imgsz=int(cfg.get("imgsz", 640)),
         conf=float(cfg.get("conf", 0.25)),
         iou=float(cfg.get("iou", 0.5)),
         vid_stride=int(cfg.get("vid_stride", 1)),
     )
 
-    print(f"current device: {torch.cuda.current_device()}")
+    print(f"current device: cpu")
 
     jsonl = JsonlWriter(out_dir / "poses.jsonl")
 
