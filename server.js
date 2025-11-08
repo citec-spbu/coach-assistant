@@ -63,11 +63,10 @@ router.post('/upload/:filename', async (ctx) => {
     console.log('Файл загружен:', destPath);
     
     
-    //const videoUrl = `http://localhost:3000/uploads/${filename}`;
-    const videoPath = destPath;
+    const videoUrl = `http://localhost:3000/uploads/${filename}`;
     // Отправка URL видео на FastAPI для обработки
     try {
-      const fastapiResponse = await axios.post('http://127.0.0.1:8000/api/send', { upload_url: videoPath });
+      const fastapiResponse = await axios.post('http://127.0.0.1:8000/api/send', { upload_url: videoUrl });
       console.log('FastAPI ответил:', fastapiResponse.data);
     } catch (error) {
       if (error.response) {
@@ -133,26 +132,86 @@ router.get('/api/get', async (ctx) => {
 });
 
 // Получение результата обработки с FastAPI
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+
+const httpServer = createServer(server.callback());
+const io = new Server(httpServer, { cors: { origin: "http://localhost:3000" } });
+
+const videoToSocketMap = new Map();
+
+// Клиент подключается
+io.on('connection', (socket) => {
+  console.log('Клиент подключился:', socket.id);
+  
+  // Клиент регистрирует себя для получения результата
+  socket.on('register-upload', (upload_url) => {
+    videoToSocketMap.set(upload_url, socket.id);
+    console.log(`Зарегистрирован: ${upload_url} → ${socket.id}`);
+  });
+  
+  // Клиент отключается
+  socket.on('disconnect', () => {
+    // Удаляем все его регистрации
+    for (let [url, socketId] of videoToSocketMap.entries()) {
+      if (socketId === socket.id) {
+        videoToSocketMap.delete(url);
+      }
+    }
+    console.log('Клиент отключился:', socket.id);
+  });
+});
+
+
 router.post('/api/result', async (ctx) => {
-  const { status, upload_url, download_url } = ctx.request.body;
-  console.log("status = ",status,"upload_url = ",upload_url, "download = ", download_url);
+  const { status, upload_url, download_url} = ctx.request.body;
+  const downloadURL = `http://localhost:3000/outputs/${download_url}`
+  console.log("status = ", status, "upload_url = ", upload_url, "download = ", download_url, "D_URL", downloadURL);
+  
   if (!status || !upload_url) {
     ctx.status = 400;
     ctx.body = { error: 'Status и upload_url обязательны' };
-
     return;
   }
+  
   videoStatusMap.set(upload_url, { status, download_url: download_url || null });
+  
+  
+  if (download_url) {
+    // socket.id конкретного пользователя
+    const socketId = videoToSocketMap.get(upload_url);
+    
+    if (socketId) {
+      // Отправляем конкретному пользователю
+      io.to(socketId).emit('video-ready', { 
+        upload_url, 
+        download_url: downloadURL 
+      });
+      console.log(`Отправлено ${socketId} для ${upload_url}`);
+      
+      // Удаляем из Map (больше не нужен)
+      videoToSocketMap.delete(upload_url);
+    } else {
+      console.log(`Socket не найден для ${upload_url}`);
+    }
+  }
+  
   ctx.status = 200;
   ctx.body = { message: 'Результат обработки принят' };
 });
 
-router.get('/result/:filename', async ctx => {});
+
 
 server.use(router.routes()).use(router.allowedMethods());
 
 server.use(serve(staticDirPath));
 server.use(serve(nodeModulesDirPath));
 
+
+
+
+
 const PORT = 3000;
-server.listen(PORT, () => console.log(`Server Listening on PORT ${PORT} ..`));
+httpServer.listen(PORT, () => console.log(`Server Listening on PORT ${PORT} ..`));
+
+

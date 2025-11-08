@@ -9,13 +9,14 @@ from pathlib import Path
 
 import yaml
 
-
+import ffmpeg
+import os
 import logging
 
 # Configure basic logging to a file named 'app.log'
 # The filemode='w' will overwrite the file each time the script runs.
 # Use filemode='a' (default) to append to the file.
-logging.basicConfig(filename='app.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='app.log', filemode='w', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def dir_from_yaml(yaml_file):
@@ -29,7 +30,7 @@ PROCESSED_DIR = dir_from_yaml(YAML_FILE)
 PROCESSED_DIR.mkdir(exist_ok=True)
 KOA_WEBHOOK_GET = "http://localhost:3000/api/get"
 KOA_WEBHOOK_RESULT = "http://localhost:3000/api/result"
-
+VIDEO_DIR = "D:\\coach-assistant\\uploads\\"
 
 class SendBody(BaseModel):
     """
@@ -47,6 +48,48 @@ class UrlBody(BaseModel):
 app = FastAPI()
 
 
+def convert_to_h264(input_path):
+    """
+    Быстро перекодирует видео из mpeg4video в H.264 (AVC)
+
+    Args:
+        input_path: путь к входному видео файлу
+
+    Returns:
+        путь к выходному файлу (processed_<имя_входного_файла>.mp4)
+    """
+    # Получаем директорию и имя входного файла
+    input_dir = os.path.dirname(input_path) or '.'
+    input_filename = os.path.basename(input_path)
+
+    # Формируем путь к выходному файлу с префиксом "processed_"
+    output_filename = f'processed_{input_filename}'
+    output_path = os.path.join(input_dir, output_filename)
+
+    try:
+        # Перекодируем видео
+        (
+            ffmpeg
+            .input(input_path)
+            .output(
+                output_path,
+                vcodec='libx264',  # Кодек H.264
+                preset='fast',  # Быстрое кодирование
+                crf=23,  # Качество
+                acodec='copy'  # Копируем аудио без перекодирования
+            )
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+
+        return output_path
+
+    except ffmpeg.Error as e:
+        print('Ошибка при конвертации:')
+        print('stderr:', e.stderr.decode('utf8'))
+        raise
+    except Exception as e:
+        print(str(e))
 async def process_video(path: str, yaml_file: str):
     from ruamel.yaml import YAML
     r_yaml = YAML()
@@ -58,12 +101,15 @@ async def process_video(path: str, yaml_file: str):
         r_yaml.dump(data, file)
     result = subprocess.run([sys.executable, "dancepose/scripts/run_pose.py"], capture_output=True, text=True)
     output_lines = result.stdout.strip().split('\n')
-    last_line = output_lines[-1] if output_lines else ""
-    return last_line
+    file_path = output_lines[-1] if output_lines else ""
+    file_path = convert_to_h264(file_path)
+    submit = file_path.split("\\")[-1]
+    return submit
 
 async def safe_process(upload_url: str):
     try:
-        result = await process_video(upload_url, YAML_FILE)  # model_simulation.main(upload_url)
+        process_url = VIDEO_DIR + upload_url.split("/")[-1]
+        result = await process_video(process_url, YAML_FILE) 
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "done",
@@ -95,11 +141,5 @@ async def post_path(url: UrlBody, background_task: BackgroundTasks):
                           ).model_dump())
 
 
-"""
-@app.get("/api/get")
-async def get_path(download_url: str):
-    return {"download_url": PROCESSED_DIR / download_url}
-
-"""
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

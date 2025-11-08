@@ -7,6 +7,43 @@
     <script type="module" src="videocut.js"></script>
 
 </head>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io('http://localhost:3000');
+  
+  socket.on('video-ready', (data) => {
+    console.log('Видео готово:', data);
+    
+    // Показываем обработанное видео
+    const processedSection = document.getElementById('processedVideoSection');
+    if (!processedSection) {
+      // Создаем секцию если её нет
+      const section = document.createElement('div');
+      section.id = 'processedVideoSection';
+      section.innerHTML = `
+        <h3>Обработанное видео:</h3>
+        <video id="processedVideo" controls muted width="640" height="360">
+        </video>
+      `;
+      document.body.appendChild(section);
+    } else {
+      processedSection.style.display = 'block';
+    }
+    
+    console.log("Data =", data.download_url)
+
+
+    const videoUrl = data.download_url;
+
+    const video = document.getElementById('processedVideo');
+    video.src = videoUrl;
+    video.load();
+
+  });
+</script>
+
+
 <body>
 
 <!--Загрузка видео на сайт -->
@@ -31,16 +68,6 @@
     const msStr = String(milliseconds).padStart(3, '0');
 
     return `${hStr}:${mStr}:${sStr}.${msStr}`;
-  }
-
-  function handleVideoFile(files) {
-    if (files.length === 0) return;
-    const file = files[0];
-    const fileURL = URL.createObjectURL(file);
-    video.src = fileURL;
-    video.style.display = 'block'; // показать плеер
-    video.load();
-    video.play();
   }
 
   video.addEventListener('timeupdate', () => {
@@ -104,6 +131,11 @@
 
             const filename = `${uuid}.mp4`;
             const result = await uploadBlob(blob, filename);
+            
+            const upload_url = `http://localhost:3000/uploads/${filename}`;
+            socket.emit('register-upload', upload_url);
+
+
             console.log(result);
             alert(`Файл загружен: uploads/${filename}`);
             URL.revokeObjectURL(blobUrl);
