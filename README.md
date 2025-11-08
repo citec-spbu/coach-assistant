@@ -15,6 +15,7 @@ Web: JavaScript, HTML, CSS, Vue.js, Python, FastAPI, Node.jsx, Koa
 
 - [Node.js](https://nodejs.org/) (версия 22.x или выше)
 - npm
+- ffmpeg
 
 ## Установка зависимостей
 В корневой папке проекта выполнить:
