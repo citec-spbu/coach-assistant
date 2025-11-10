@@ -30,7 +30,7 @@ PROCESSED_DIR = dir_from_yaml(YAML_FILE)
 PROCESSED_DIR.mkdir(exist_ok=True)
 KOA_WEBHOOK_GET = "http://localhost:3000/api/get"
 KOA_WEBHOOK_RESULT = "http://localhost:3000/api/result"
-VIDEO_DIR = "D:\\coach-assistant\\uploads\\"
+VIDEO_DIR = "uploads/"
 
 class SendBody(BaseModel):
     """
