@@ -6,7 +6,7 @@ import uvicorn
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from pathlib import Path
-
+from dancepose.scripts import run_pose_async as run_pose
 import yaml
 
 import ffmpeg
@@ -90,26 +90,21 @@ def convert_to_h264(input_path):
         raise
     except Exception as e:
         print(str(e))
-async def process_video(path: str, yaml_file: str):
-    from ruamel.yaml import YAML
-    r_yaml = YAML()
-    r_yaml.preserve_quotes = True
-    with open(yaml_file, 'r') as file:
-        data = r_yaml.load(file)
-    data['video_path'] = path
-    with open(yaml_file, 'w') as file:
-        r_yaml.dump(data, file)
-    result = subprocess.run([sys.executable, "dancepose/scripts/run_pose.py"], capture_output=True, text=True)
-    output_lines = result.stdout.strip().split('\n')
-    file_path = output_lines[-1] if output_lines else ""
-    file_path = convert_to_h264(file_path)
-    submit = file_path.split("\\")[-1]
-    return submit
+async def process_video(path: str):
+    result = await run_pose.main(video_path=path)
+    if not result["success"]:
+        raise Exception(result["error"])
+    print(result)
+    overlay_file = str(result["overlay_file"])
+    converted_file = convert_to_h264(overlay_file)
+    filename = os.path.basename(converted_file)
+    submit_dir = str(Path(result["video_name"]) / filename)
+    return submit_dir.replace("\\", "/")
 
 async def safe_process(upload_url: str):
     try:
         process_url = VIDEO_DIR + upload_url.split("/")[-1]
-        result = await process_video(process_url, YAML_FILE) 
+        result = await process_video(process_url)
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "done",
