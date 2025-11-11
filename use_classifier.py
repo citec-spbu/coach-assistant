@@ -18,7 +18,11 @@ from collections import Counter
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 # Разрешить загрузку sklearn классов (для PyTorch 2.6+)
-torch.serialization.add_safe_globals([LabelEncoder, StandardScaler])
+try:
+    torch.serialization.add_safe_globals([LabelEncoder, StandardScaler])
+except AttributeError:
+    # Старая версия PyTorch, эта функция не нужна
+    pass
 
 
 class GRUModel(torch.nn.Module):
@@ -56,12 +60,14 @@ def classify_video(poses_file, model_path="best_model_10pct.pth"):
         
         scaler = checkpoint['scaler']
         label_encoder = checkpoint['label_encoder']
-        sequence_length = checkpoint['sequence_length']
+        metadata = checkpoint.get('metadata', {})
+        sequence_length = metadata.get('sequence_length', 30)
         
-        model = GRUModel(
-            input_size=checkpoint['input_size'],
-            num_classes=checkpoint['num_classes']
-        )
+        # Получаем размеры из scaler
+        input_size = scaler.mean_.shape[0]
+        num_classes = len(label_encoder.classes_)
+        
+        model = GRUModel(input_size=input_size, num_classes=num_classes)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
         
@@ -148,8 +154,8 @@ if __name__ == '__main__':
     result = classify_video(poses_file, model_path)
     
     if result['success']:
-        print(f"\n✅ Движение: {result['predicted_figure']}")
-        print(f"   Уверенность: {result['confidence']*100:.1f}%")
+        print(f"\nDvizhenie: {result['predicted_figure']}")
+        print(f"Uverennost: {result['confidence']*100:.1f}%")
     else:
-        print(f"\n❌ Ошибка: {result['error']}")
+        print(f"\nOshibka: {result['error']}")
 
