@@ -1,0 +1,73 @@
+# Основные зависимости для классификатора танцевальных фигур
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data processing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Progress bars
+tqdm>=4.62.0
+
+# Configuration files
+pyyaml>=5.4.0
+
+# Computer Vision (для dancepose)
+opencv-python>=4.5.0
+ultralytics>=8.0.0
+
+# Jupyter для анализа
+jupyter>=1.0.0
+ipykernel>=6.0.0
+ipywidgets>=7.6.0
+
+# Дополнительные утилиты
+pillow>=8.3.0
+
+
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data processing
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Progress bars
+tqdm>=4.62.0
+
+# Configuration files
+pyyaml>=5.4.0
+
+# Computer Vision (для dancepose)
+opencv-python>=4.5.0
+ultralytics>=8.0.0
+
+# Jupyter для анализа
+jupyter>=1.0.0
+ipykernel>=6.0.0
+ipywidgets>=7.6.0
+
+# Дополнительные утилиты
+pillow>=8.3.0
+
+

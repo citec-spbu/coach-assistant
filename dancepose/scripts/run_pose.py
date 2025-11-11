@@ -1,0 +1,171 @@
+import os, sys, cv2, yaml, math
+import numpy as np
+from pathlib import Path
+
+# Добавляем путь к родительской папке для импорта src
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from src.utils.io_utils import ensure_dir, JsonlWriter, SimpleLogger
+from src.inference.pose_infer import PoseExtractor
+from src.viz.overlay import draw_pose, SmoothBuffer
+
+def main(cfg_path: str = None, video_path: str = None, output_dir: str = None):
+    """
+    Основная функция для извлечения поз из видео.
+    
+    Args:
+        cfg_path: путь к YAML конфигу (старый способ)
+        video_path: прямой путь к видео (новый способ)
+        output_dir: директория для сохранения результатов (новый способ)
+    """
+    # Если передан конфиг - используем его
+    if cfg_path is not None:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        video_path = cfg["video_path"]
+        out_dir = Path(cfg["output_dir"])
+    # Иначе используем прямые параметры
+    elif video_path is not None and output_dir is not None:
+        out_dir = Path(output_dir)
+        # Создаём минимальный конфиг с дефолтными значениями
+        # Принудительно используем CPU (безопасный вариант)
+        cfg = {
+            "video_path": video_path,
+            "output_dir": output_dir,
+            "model_name": "yolov8m-pose.pt",
+            "device": "cpu",  # Всегда используем CPU
+            "imgsz": 640,
+            "conf": 0.25,
+            "iou": 0.5,
+            "vid_stride": 1,
+            "save_overlay": True,
+            "overlay_fps": 0,
+            "smooth_window": 5,
+            "kp_score_thresh": 0.35,
+            "line_thickness": 2,
+            "point_radius": 3,
+        }
+    else:
+        raise ValueError("Необходимо передать либо cfg_path, либо (video_path + output_dir)")
+    ensure_dir(out_dir)
+
+    log = SimpleLogger(out_dir / "run.log")
+    log.log(f"video_path = {video_path}")
+    log.log(f"config = {cfg}")
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        log.log("ERROR: cannot open video.")
+        log.flush()
+        return
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 1e-3:
+        fps = 25.0
+        log.log("WARN: FPS not found, fallback to 25.0")
+
+    W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    log.log(f"Video info: {W}x{H}, fps={fps}, frames={total}")
+
+    #Инициализируем инференс
+    pe = PoseExtractor(
+        model_name=cfg["model_name"],
+        device=str(cfg.get("device", "cpu")),
+        imgsz=int(cfg.get("imgsz", 640)),
+        conf=float(cfg.get("conf", 0.25)),
+        iou=float(cfg.get("iou", 0.5)),
+        vid_stride=int(cfg.get("vid_stride", 1)),
+    )
+
+    print(f"current device: cpu")
+
+    jsonl = JsonlWriter(out_dir / "poses.jsonl")
+
+    #Визуализация результатов
+    save_overlay = bool(cfg.get("save_overlay", True))
+    #Генерируем уникальный путь для визуализации
+    video_name = Path(video_path).stem
+    overlay_path = out_dir / f"overlay_{video_name}.mp4"
+    writer = None
+    if save_overlay:
+        ov_fps = fps if cfg.get("overlay_fps") in (None, 0) else float(cfg["overlay_fps"])
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(overlay_path), fourcc, ov_fps, (W, H))
+        smooth = SmoothBuffer(window=int(cfg.get("smooth_window", 5)))
+        kp_thresh = float(cfg.get("kp_score_thresh", 0.35))
+        line_thickness = int(cfg.get("line_thickness", 2))
+        point_radius = int(cfg.get("point_radius", 3))
+
+    valid_frames, total_frames = 0, 0
+    conf_sum = 0.0
+    frame_idx = 0
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+
+        total_frames += 1
+        ts = frame_idx / fps
+
+        valid, bbox, kps_xyc, kp_mean = pe.infer_frame(frame)
+
+        rec = {
+            "frame_idx": frame_idx,
+            "timestamp": round(ts, 4),
+            "width": W, "height": H,
+            "model": cfg["model_name"],
+            "valid": bool(valid),
+        }
+
+        if valid:
+            valid_frames += 1
+            conf_sum += kp_mean
+
+            # bbox xywh
+            rec["bbox"] = [float(bbox[0]-bbox[2]/2), float(bbox[1]-bbox[3]/2), float(bbox[2]), float(bbox[3])]
+            # keypoints as [[x,y,score], ...]
+            rec["num_joints"] = int(kps_xyc.shape[0])
+            rec["keypoints"] = [[float(x), float(y), float(s)] for (x, y, s) in kps_xyc]
+
+            if save_overlay:
+                kps_vis = kps_xyc.copy()
+                kps_vis = smooth.apply(kps_vis)
+                frame = draw_pose(frame, kps_vis, bbox=rec["bbox"], kp_thresh=kp_thresh,
+                                  line_thickness=line_thickness, point_radius=point_radius)
+
+        jsonl.write(rec)
+
+        if save_overlay:
+            writer.write(frame)
+
+        frame_idx += 1
+
+    cap.release()
+    jsonl.close()
+    if writer is not None:
+        writer.release()
+
+    coverage = valid_frames / max(1, total_frames)
+    avg_conf = (conf_sum / valid_frames) if valid_frames > 0 else 0.0
+    log.log(f"frames_total = {total_frames}")
+    log.log(f"frames_valid = {valid_frames}")
+    log.log(f"coverage = {coverage:.4f}")
+    log.log(f"avg_kp_conf = {avg_conf:.4f}")
+    log.log(f"poses.jsonl = {out_dir/'poses.jsonl'}")
+    if save_overlay:
+        log.log(f"overlay.mp4 = {overlay_path}")
+        return str(overlay_path)
+    log.flush()
+    return None
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--cfg", type=str, default="C:/Users/buzov/Downloads/coach-assistant-feature-dancepose/coach-assistant-feature-dancepose/dancepose/default.yaml")
+    args = ap.parse_args()
+    result_path = main(args.cfg)
+    if result_path:
+        print(f"\nПроцесс выделения поз завершен. Видео доступно по пути: {result_path}")
