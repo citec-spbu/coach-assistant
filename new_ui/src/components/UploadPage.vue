@@ -132,6 +132,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import axios from 'axios'
 import { ArrowLeft, Music, Upload, Zap, Play } from 'lucide-vue-next'
 import TimePickerMs from './TimePickerMs.vue'
 
@@ -149,13 +150,31 @@ const triggerUpload = () => {
 }
 
 const handleVideoUpload = (e) => {
-  const file = e.target.files?.[0]
-  if (file) {
-    uploadedVideo.value = URL.createObjectURL(file)
-    analysisResult.value = null
-
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('video/')) {
+    alert('Пожалуйста, выберите видеофайл.')
+    return
   }
-}
+  const url = URL.createObjectURL(file);
+  const tmpVideo = document.createElement('video');
+  tmpVideo.preload = 'metadata';
+  tmpVideo.src = url;
+  tmpVideo.onloadedmetadata = () => {
+    // Проверяем нужные параметры видео
+    if (tmpVideo.videoWidth !== 1920 || tmpVideo.videoHeight !== 1080) {
+      alert(`Видео не соответствует требуемому разрешению 1920x1080. Загружено: ${tmpVideo.videoWidth}x${tmpVideo.videoHeight}`);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    uploadedVideo.value = url;
+    analysisResult.value = null;
+  };
+  tmpVideo.onerror = () => {
+    alert('Ошибка при загрузке видео.');
+    URL.revokeObjectURL(url);
+  };
+};
 
 const handleDrop = (e) => {
   const file = e.dataTransfer?.files?.[0]
@@ -165,21 +184,45 @@ const handleDrop = (e) => {
   }
 }
 
-const handleAnalyze = () => {
+const handleAnalyze = async () => {
+  if (!fileInput.value || !fileInput.value.files[0]) {
+    alert('Пожалуйста, загрузите видео перед анализом.');
+    return;
+  }
+  isAnalyzing.value = true;
 
-  if (!uploadedVideo.value) return
-  isAnalyzing.value = true
+  const file = fileInput.value.files[0];
+  const formData = new FormData();
+  formData.append('video', file);
 
-  setTimeout(() => {
+  try {
+    const response = await axios.post(`http://localhost:3000/upload/${encodeURIComponent(file.name)}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const result = response.data;
+    if (result.error) {
+      throw new Error(result.error);
+    }
+
     analysisResult.value = {
-      accuracy: 87,
-      feedback: [
+      accuracy: result.accuracy || 87,
+      timing: result.timing || 92,
+      technique: result.technique || 84,
+      overall: result.overall || 88,
+      feedback: result.feedback || [
         'Отличная синхронизация с ритмом!',
         'Небольшие погрешности в позициях рук',
-        'Прекрасная энергия и подача!'
+        'Прекрасная энергия и подача!',
       ]
     }
-    isAnalyzing.value = false
-  }, 3000)
-}
+      } catch (error) {
+    alert(error.message || 'Ошибка при анализе видео');
+  } finally {
+    isAnalyzing.value = false;
+    refreshIcons();
+  }
+};
 </script>
