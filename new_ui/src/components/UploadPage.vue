@@ -1,0 +1,185 @@
+<template>
+  <div class="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 p-6">
+    <!-- Navigation -->
+    <nav class="flex justify-between items-center mb-8">
+      <button
+        @click="$emit('navigate', 'home')"
+        class="text-gray-300 hover:text-white transition-colors duration-200 flex items-center space-x-2"
+      >
+        <ArrowLeft class="w-5 h-5" />
+        <span>Назад на главную</span>
+      </button>
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 bg-gradient-to-r from-pink-500 to-violet-500 rounded-lg flex items-center justify-center">
+          <Music class="w-4 h-4 text-white" />
+        </div>
+        <span class="text-white font-semibold">Ассистент тренера</span>
+      </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto">
+      <h1 class="text-3xl md:text-4xl font-bold text-white mb-8 text-center">
+        Загрузка и анализ видео
+      </h1>
+
+      <!-- Upload Section -->
+      <div class="bg-gray-800 rounded-2xl p-8 mb-8 border border-gray-700">
+        <div
+          class="border-2 border-dashed border-gray-600 rounded-xl p-12 text-center cursor-pointer hover:border-pink-500 transition-colors duration-200"
+          @click="triggerUpload"
+          @dragover.prevent
+          @drop.prevent="handleDrop"
+        >
+          <Upload class="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 class="text-xl font-semibold text-white mb-2">Загрузить видео</h3>
+          <p class="text-gray-400 mb-4">Нажмите или перетащите видео файл</p>
+          <p class="text-sm text-gray-500">Поддерживаемые форматы: MP4, MOV, AVI</p>
+          <input
+            ref="fileInput"
+            type="file"
+            accept="video/*"
+            @change="handleVideoUpload"
+            class="hidden"
+          />
+        </div>
+
+        <div v-if="uploadedVideo" class="mt-6">
+          <h3 class="text-lg font-semibold text-white mb-4">Превью видео</h3>
+          <div class="bg-black rounded-lg overflow-hidden">
+            <video
+              :src="uploadedVideo"
+              class="w-full h-auto max-h-96 object-contain"
+              controls
+            ></video>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trim Settings -->
+      <div v-if="uploadedVideo" class="bg-gray-800 rounded-2xl p-8 mb-8 border border-gray-700">
+        <h3 class="text-xl font-semibold text-white mb-6">Настройки обрезки</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-gray-300 mb-2">Начало</label>
+            <TimePickerMs v-model="startTime" />
+          </div>
+          <div>
+            <label class="block text-gray-300 mb-2">Конец</label>
+            <TimePickerMs v-model="endTime" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Analyze Button -->
+      <div v-if="uploadedVideo" class="text-center mb-8">
+        <button
+          @click="handleAnalyze"
+          :disabled="isAnalyzing"
+          class="bg-gradient-to-r from-pink-500 to-violet-500 text-white px-8 py-4 rounded-full text-lg font-semibold hover:from-pink-600 hover:to-violet-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
+        >
+          <template v-if="isAnalyzing">
+            <Zap class="w-5 h-5 mr-2 animate-pulse" />
+            Анализируем...
+          </template>
+          <template v-else>
+            <Play class="w-5 h-5 mr-2" />
+            Отправить видео на анализ
+          </template>
+        </button>
+      </div>
+
+      <!-- Analysis Result -->
+      <div v-if="analysisResult" class="bg-gray-800 rounded-2xl p-8 border border-gray-700">
+        <h3 class="text-2xl font-bold text-white mb-6 text-center">Результат анализа</h3>
+
+        <!-- Scores -->
+        <div class="grid place-items-center mb-8">
+          <div class="bg-gradient-to-r from-pink-500/20 to-violet-500/20 rounded-xl p-4 text-center border border-pink-500/30 w-64">
+          <div class="text-3xl font-bold text-pink-400">{{ analysisResult.overall }}%</div>
+          <div class="text-gray-300">Общий балл</div>
+        </div>
+      </div>
+
+        <!-- Feedback -->
+        <div class="bg-gray-700/50 rounded-xl p-6">
+          <h4 class="text-xl font-semibold text-white mb-4">Обратная связь</h4>
+          <ul class="space-y-3">
+            <li v-for="(item, idx) in analysisResult.feedback" :key="idx" class="flex items-start space-x-3">
+              <div class="w-2 h-2 bg-pink-500 rounded-full mt-2 flex-shrink-0"></div>
+              <span class="text-gray-200">{{ item }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Video Result Preview -->
+        <div class="mt-8">
+          <h4 class="text-xl font-semibold text-white mb-4">Видео с анализом</h4>
+          <div class="bg-black rounded-lg overflow-hidden">
+            <video
+              :src="uploadedVideo"
+              class="w-full h-auto max-h-96 object-contain"
+              controls
+            ></video>
+            <div class="bg-gray-900/80 p-4 text-center">
+              <p class="text-gray-300">Видео с наложенными метками анализа (симуляция)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { ArrowLeft, Music, Upload, Zap, Play } from 'lucide-vue-next'
+import TimePickerMs from './TimePickerMs.vue'
+
+defineEmits(['navigate'])
+
+const uploadedVideo = ref(null)
+const startTime = ref('00:00:00.000')
+const endTime = ref('00:00:30.000')
+const isAnalyzing = ref(false)
+const analysisResult = ref(null)
+const fileInput = ref(null)
+
+const triggerUpload = () => {
+  fileInput.value.click()
+}
+
+const handleVideoUpload = (e) => {
+  const file = e.target.files?.[0]
+  if (file) {
+    uploadedVideo.value = URL.createObjectURL(file)
+    analysisResult.value = null
+
+  }
+}
+
+const handleDrop = (e) => {
+  const file = e.dataTransfer?.files?.[0]
+  if (file) {
+    uploadedVideo.value = URL.createObjectURL(file)
+    analysisResult.value = null
+  }
+}
+
+const handleAnalyze = () => {
+
+  if (!uploadedVideo.value) return
+  isAnalyzing.value = true
+
+  setTimeout(() => {
+    analysisResult.value = {
+      accuracy: 87,
+      feedback: [
+        'Отличная синхронизация с ритмом!',
+        'Небольшие погрешности в позициях рук',
+        'Прекрасная энергия и подача!'
+      ]
+    }
+    isAnalyzing.value = false
+  }, 3000)
+}
+</script>
