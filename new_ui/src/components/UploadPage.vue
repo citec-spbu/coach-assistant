@@ -131,7 +131,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { io } from 'socket.io-client'
 import axios from 'axios'
 import { ArrowLeft, Music, Upload, Zap, Play } from 'lucide-vue-next'
 import TimePickerMs from './TimePickerMs.vue'
@@ -144,6 +145,51 @@ const endTime = ref('00:00:30.000')
 const isAnalyzing = ref(false)
 const analysisResult = ref(null)
 const fileInput = ref(null)
+let socket = null
+
+
+onMounted(() => {
+  socket = io()
+  
+  socket.on('video-ready', (data) => {
+    console.log('Видео готово:', data)
+    
+    console.log("Data =", data.download_url)
+    
+    
+    if (data.status === "done") {
+      const result = JSON.parse(data.metadata);
+      console.log(result)
+      analysisResult.value = {
+        overall: Math.round(result.confidence * 100),
+        feedback: result.figures
+      }
+
+      const videoUrl = data.download_url
+      processedVideoUrl.value = videoUrl
+      
+      if (processedVideo.value) {
+        processedVideo.value.src = videoUrl
+        processedVideo.value.load()
+      }
+      message.value = 'Видео успешно обработано!'
+    }
+    else {
+      message.value = "Ошибка"
+    }
+    isAnalyzing.value = false
+    
+  })
+})
+
+onUnmounted(() => {
+  if (socket) {
+    socket.disconnect()
+  }
+})
+
+
+
 
 const triggerUpload = () => {
   fileInput.value.click()
