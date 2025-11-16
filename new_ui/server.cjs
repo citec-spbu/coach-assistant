@@ -5,7 +5,7 @@ const Router = require('@koa/router');
 const fs = require('fs-extra');
 const { koaBody } = require('koa-body');
 const axios = require('axios');
-
+const cors = require('@koa/cors');
 const staticDirPath = path.join(__dirname, '');
 const nodeModulesDirPath = path.join(__dirname, 'node_modules');
 const uploadDir = path.join(__dirname, 'uploads');
@@ -16,6 +16,12 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 const server = new Koa();
+
+
+server.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 
 server.use(koaBody({
   multipart: true,
@@ -136,7 +142,12 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 
 const httpServer = createServer(server.callback());
-const io = new Server(httpServer, { cors: { origin: "http://localhost:3000" } });
+const io = new Server(httpServer, {
+  cors: {
+    origin: 'http://localhost:5173',
+    credentials: true
+  }
+});
 
 const videoToSocketMap = new Map();
 
@@ -164,9 +175,10 @@ io.on('connection', (socket) => {
 
 
 router.post('/api/result', async (ctx) => {
-  const { status, upload_url, download_url} = ctx.request.body;
+  const { status, upload_url, download_url, metadata} = ctx.request.body;
   const downloadURL = `http://localhost:3000/outputs/${download_url}`
-  console.log("status = ", status, "upload_url = ", upload_url, "download = ", download_url, "D_URL", downloadURL);
+  console.log("status = ", status, "upload_url = ", upload_url, 
+    "download = ", download_url, "D_URL", downloadURL, "Meta", metadata);
   
   if (!status || !upload_url) {
     ctx.status = 400;
@@ -176,16 +188,16 @@ router.post('/api/result', async (ctx) => {
   
   videoStatusMap.set(upload_url, { status, download_url: download_url || null });
   
-  
-  if (download_url) {
-    // socket.id конкретного пользователя
-    const socketId = videoToSocketMap.get(upload_url);
+  const socketId = videoToSocketMap.get(upload_url);
+  if (status === "done") {
     
     if (socketId) {
       // Отправляем конкретному пользователю
       io.to(socketId).emit('video-ready', { 
-        upload_url, 
-        download_url: downloadURL 
+        status: status,
+        upload_url : upload_url, 
+        download_url: downloadURL,
+        metadata : metadata
       });
       console.log(`Отправлено ${socketId} для ${upload_url}`);
       
@@ -196,6 +208,20 @@ router.post('/api/result', async (ctx) => {
     }
   }
   
+  else {
+    
+    if (socketId) {
+      // Отправляем конкретному пользователю
+      io.to(socketId).emit('video-ready', { 
+        status: "failed"
+      });
+      console.log(`Отправлено ${socketId} для ${upload_url}`);
+      
+      // Удаляем из Map (больше не нужен)
+      videoToSocketMap.delete(upload_url);
+    }
+  }
+
   ctx.status = 200;
   ctx.body = { message: 'Результат обработки принят' };
 });
