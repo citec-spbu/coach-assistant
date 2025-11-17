@@ -47,10 +47,17 @@
           <h3 class="text-lg font-semibold text-white mb-4">Превью видео</h3>
           <div class="bg-black rounded-lg overflow-hidden">
             <video
+              ref="videoPlayer"
               :src="uploadedVideo"
+              @timeupdate="onTimeUpdate"
+              @loadedmetadata="handleMetadataLoaded"
               class="w-full h-auto max-h-96 object-contain"
               controls
+              muted
             ></video>
+          </div>
+          <div class="text-white font-mono text-center mt-2">
+            {{ timeDisplay }}
           </div>
         </div>
       </div>
@@ -68,30 +75,29 @@
             <TimePickerMs v-model="endTime" />
           </div>
         </div>
+
+        <!-- Analyze Button -->
+        <div class="text-center mt-8">
+          <button
+            @click="cutVideo"
+            :disabled="isAnalyzing"
+            class="bg-gradient-to-r from-pink-500 to-violet-500 text-white px-8 py-4 rounded-full text-lg font-semibold hover:from-pink-600 hover:to-violet-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
+          >
+            <template v-if="isAnalyzing">
+              <Zap class="w-5 h-5 mr-2 animate-pulse" />
+              Анализируем...
+            </template>
+            <template v-else>
+              <Play class="w-5 h-5 mr-2" />
+              Отправить видео на анализ
+            </template>
+          </button>
+        </div>
       </div>
 
-      <!-- Analyze Button -->
-      <div v-if="uploadedVideo" class="text-center mb-8">
-        <button
-          @click="handleAnalyze"
-          :disabled="isAnalyzing"
-          class="bg-gradient-to-r from-pink-500 to-violet-500 text-white px-8 py-4 rounded-full text-lg font-semibold hover:from-pink-600 hover:to-violet-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
-        >
-          <template v-if="isAnalyzing">
-            <Zap class="w-5 h-5 mr-2 animate-pulse" />
-            Анализируем...
-          </template>
-          <template v-else>
-            <Play class="w-5 h-5 mr-2" />
-            Отправить видео на анализ
-          </template>
-        </button>
-      </div>
-
-      <!-- Analysis Result -->
-      <div v-if="analysisResult" class="bg-gray-800 rounded-2xl p-8 border border-gray-700">
+      <!-- Processed Video Section -->
+      <div v-if="processedVideoUrl" class="bg-gray-800 rounded-2xl p-8 border border-gray-700">
         <h3 class="text-2xl font-bold text-white mb-6 text-center">Результат анализа</h3>
-
         <!-- Scores -->
         <div class="grid place-items-center mb-8">
           <div class="bg-gradient-to-r from-pink-500/20 to-violet-500/20 rounded-xl p-4 text-center border border-pink-500/30 w-64">
@@ -102,7 +108,7 @@
 
         <!-- Feedback -->
         <div class="bg-gray-700/50 rounded-xl p-6">
-          <h4 class="text-xl font-semibold text-white mb-4">Обратная связь</h4>
+          <h4 class="text-xl font-semibold text-white mb-4">Выделенные позы</h4>
           <ul class="space-y-3">
             <li v-for="(item, idx) in analysisResult.feedback" :key="idx" class="flex items-start space-x-3">
               <div class="w-2 h-2 bg-pink-500 rounded-full mt-2 flex-shrink-0"></div>
@@ -111,12 +117,15 @@
           </ul>
         </div>
 
-        <!-- Video Result Preview -->
+
+
+         <!-- Video Result Preview -->
         <div class="mt-8">
           <h4 class="text-xl font-semibold text-white mb-4">Видео с анализом</h4>
           <div class="bg-black rounded-lg overflow-hidden">
             <video
-              :src="uploadedVideo"
+              ref="processedVideo"
+              :src="processedVideoUrl"
               class="w-full h-auto max-h-96 object-contain"
               controls
             ></video>
@@ -125,6 +134,22 @@
             </div>
           </div>
         </div>
+        
+        <div class="text-center mt-4">
+          <a
+            :href="processedVideoUrl"
+            download
+            class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg transition-colors"
+          >
+            <Download class="w-5 h-5" />
+            Скачать видео
+          </a>
+        </div>
+      </div>
+
+      <!-- Message -->
+      <div v-if="message" class="mt-4 p-4 bg-blue-500/20 text-blue-300 rounded-lg text-center">
+        {{ message }}
       </div>
     </div>
   </div>
@@ -134,7 +159,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 import axios from 'axios'
-import { ArrowLeft, Music, Upload, Zap, Play } from 'lucide-vue-next'
+import { ArrowLeft, Music, Upload, Zap, Play, Download } from 'lucide-vue-next'
 import TimePickerMs from './TimePickerMs.vue'
 
 defineEmits(['navigate'])
@@ -145,7 +170,12 @@ const endTime = ref('00:00:30.000')
 const isAnalyzing = ref(false)
 const analysisResult = ref(null)
 const fileInput = ref(null)
+const processedVideo = ref(null)
+const timeDisplay = ref('00:00:00.000')
+const message = ref('')
+
 let socket = null
+const processedVideoUrl = ref(null)
 
 
 onMounted(() => {
@@ -191,6 +221,28 @@ onUnmounted(() => {
 
 
 
+const formatTime = (time) => {
+  const hours = Math.floor(time / 3600)
+  const minutes = Math.floor((time % 3600) / 60)
+  const seconds = Math.floor(time % 60)
+  const milliseconds = Math.floor((time % 1) * 1000)
+
+  const hStr = String(hours).padStart(2, '0')
+  const mStr = String(minutes).padStart(2, '0')
+  const sStr = String(seconds).padStart(2, '0')
+  const msStr = String(milliseconds).padStart(3, '0')
+
+  return `${hStr}:${mStr}:${sStr}.${msStr}`
+}
+
+const onTimeUpdate = () => {
+  if (videoPlayer.value) {
+    timeDisplay.value = formatTime(videoPlayer.value.currentTime)
+  }
+}
+
+
+
 const triggerUpload = () => {
   fileInput.value.click()
 }
@@ -214,6 +266,8 @@ const handleVideoUpload = (e) => {
       return;
     }
     uploadedVideo.value = url;
+    processedVideoUrl.value = null
+    message.value = ''
     analysisResult.value = null;
   };
   tmpVideo.onerror = () => {
