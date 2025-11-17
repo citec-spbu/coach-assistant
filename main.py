@@ -9,10 +9,11 @@ from pathlib import Path
 from dancepose.scripts import run_pose_async as run_pose
 import yaml
 
+import numpy as np
 import ffmpeg
 import os
 import logging
-
+import json
 # Configure basic logging to a file named 'app.log'
 # The filemode='w' will overwrite the file each time the script runs.
 # Use filemode='a' (default) to append to the file.
@@ -99,19 +100,50 @@ async def process_video(path: str):
     converted_file = convert_to_h264(overlay_file)
     filename = os.path.basename(converted_file)
     submit_dir = str(Path(result["video_name"]) / filename)
-    return submit_dir.replace("\\", "/")
+    data = None
+    try:
+        """        
+        from dance_classifier.inference.predict import DanceClassifierPredictor
+        # Инициализация (один раз)
+        predictor = DanceClassifierPredictor(
+            model_path="best_model_10pct.pth",
+            metadata_path="metadata.json"
+        )
+        model_result = predictor.predict_from_poses(result["poses_file"])
+        print(model_result['predicted_figure'])  # "Fan"
+        """
+        from use_classifier import classify_video
+        result = classify_video(result["poses_file"])
+        print("result = ", result)
+        if not isinstance(result["predicted_figure"], list) and \
+        not isinstance(result["predicted_figure"], np.ndarray):
+            result["predicted_figure"] = [result["predicted_figure"]]
+        data = {
+            'figures' : [str(figure) for figure in result["predicted_figure"]],
+            'confidence': result['confidence']
+        }
+
+    except Exception as e:
+        print(e)
+    #data['download_url'] = str(submit_dir.replace("\\", "/"))
+    download_url = str(submit_dir.replace("\\", "/"))
+    print(data)
+    return download_url, data
 
 async def safe_process(upload_url: str):
     try:
         process_url = VIDEO_DIR + upload_url.split("/")[-1]
-        result = await process_video(process_url)
+        download_url, data = await process_video(process_url)
+        print(download_url, data)
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "done",
                 "upload_url": upload_url,
-                "download_url": str(result),
+                "download_url": download_url,
+                "metadata": json.dumps(data)
             })
     except Exception as e:
+        print(str(e))
         logging.error(str(e))
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
