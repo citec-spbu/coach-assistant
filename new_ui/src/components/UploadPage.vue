@@ -367,14 +367,15 @@ const handleAnalyze = async (blobValue) => {
 
   try {
     const formData = new FormData();
-    formData.append('video', trimmedBlob.value, blobValue);
+    const filename = `${blobValue}.mp4`
+    formData.append('video', trimmedBlob.value, filename);
     // Отправляем POST-запрос на сервер
-    await axios.post(`http://localhost:3000/upload/${blobValue}`, formData, {
+    await axios.post(`http://localhost:3000/video/${filename}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-    socket.emit('register-upload', `http://localhost:3000/uploads/${blobValue}`)
+    socket.emit('register-upload', `http://localhost:3000/uploads/${filename}`)
 
     message.value = 'Видео успешно отправлено на анализ.';
   } catch (error) {

@@ -38,7 +38,7 @@ const router = new Router();
 const videoStatusMap = new Map();
 
 // Роут для загрузки видео
-router.post('/upload/:filename', async (ctx) => {
+router.post('/video/:filename', async (ctx) => {
   try {
     const { filename } = ctx.params;
     const file = ctx.request.files?.video;
