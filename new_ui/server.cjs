@@ -188,9 +188,9 @@ router.post('/api/result', async (ctx) => {
   
   videoStatusMap.set(upload_url, { status, download_url: download_url || null });
   
-  const socketId = videoToSocketMap.get(upload_url);
   if (status === "done") {
-    
+    const socketId = videoToSocketMap.get(upload_url);
+
     if (socketId) {
       // Отправляем конкретному пользователю
       io.to(socketId).emit('video-ready', { 
@@ -209,7 +209,8 @@ router.post('/api/result', async (ctx) => {
   }
   
   else {
-    
+    const socketId = videoToSocketMap.get(upload_url);
+
     if (socketId) {
       // Отправляем конкретному пользователю
       io.to(socketId).emit('video-ready', { 
@@ -233,11 +234,5 @@ server.use(router.routes()).use(router.allowedMethods());
 server.use(serve(staticDirPath));
 server.use(serve(nodeModulesDirPath));
 
-
-
-
-
 const PORT = 3000;
 httpServer.listen(PORT, () => console.log(`Server Listening on PORT ${PORT} ..`));
-
-
