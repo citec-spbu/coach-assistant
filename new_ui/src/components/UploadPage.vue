@@ -171,6 +171,7 @@ const isAnalyzing = ref(false)
 const analysisResult = ref(null)
 const fileInput = ref(null)
 const processedVideo = ref(null)
+const videoPlayer = ref(null)
 const timeDisplay = ref('00:00:00.000')
 const message = ref('')
 
@@ -182,34 +183,36 @@ onMounted(() => {
   socket = io()
   
   socket.on('video-ready', (data) => {
-    console.log('Видео готово:', data)
-    
-    console.log("Data =", data.download_url)
-    
-    
-    if (data.status === "done") {
-      const result = JSON.parse(data.metadata);
-      console.log(result)
-      analysisResult.value = {
-        overall: Math.round(result.confidence * 100),
-        feedback: result.figures
-      }
+  console.log('Видео готово:', data);
 
-      const videoUrl = data.download_url
-      processedVideoUrl.value = videoUrl
-      
-      if (processedVideo.value) {
-        processedVideo.value.src = videoUrl
-        processedVideo.value.load()
-      }
-      message.value = 'Видео успешно обработано!'
+  if (!data || !data.download_url || data.download_url.trim() === '') {
+    message.value = 'Видео от сервера не получено или ссылка отсутствует';
+    console.warn('Нет данных или URL обработанного видео');
+    isAnalyzing.value = false;
+    return;
+  }
+
+  if (data.status === "done") {
+    const result = JSON.parse(data.metadata);
+    analysisResult.value = {
+      overall: Math.round(result.confidence * 100),
+      feedback: result.figures
+    };
+
+    processedVideoUrl.value = data.download_url;
+    if (processedVideo.value) {
+      processedVideo.value.src = processedVideoUrl.value;
+      processedVideo.value.load();
+      processedVideo.value.play().catch(() => {});
     }
-    else {
-      message.value = "Ошибка"
-    }
-    isAnalyzing.value = false
-    
-  })
+
+    message.value = 'Видео успешно обработано!';
+  } else {
+    message.value = "Ошибка обработки видео";
+  }
+
+  isAnalyzing.value = false;
+});
 })
 
 onUnmounted(() => {
@@ -269,6 +272,18 @@ const handleVideoUpload = (e) => {
     processedVideoUrl.value = null
     message.value = ''
     analysisResult.value = null;
+
+     // Установим endTime равным длительности видео с миллисекундами
+  const duration = tmpVideo.duration; // длительность в секундах с дробной частью
+  const hours = Math.floor(duration / 3600);
+  const minutes = Math.floor((duration % 3600) / 60);
+  const seconds = Math.floor(duration % 60);
+  const milliseconds = Math.floor((duration % 1) * 1000);
+  endTime.value = 
+    String(hours).padStart(2, '0') + ':' +
+    String(minutes).padStart(2, '0') + ':' +
+    String(seconds).padStart(2, '0') + '.' +
+    String(milliseconds).padStart(3, '0');
   };
   tmpVideo.onerror = () => {
     alert('Ошибка при загрузке видео.');
@@ -284,45 +299,91 @@ const handleDrop = (e) => {
   }
 }
 
+import { FFmpeg } from '/node_modules/@ffmpeg/ffmpeg/dist/esm/index.js';
+import { fetchFile } from '/node_modules/@ffmpeg/util/dist/esm/index.js';
+
+const trimVideo = async (blob, startTime, endTime) => {
+  const ffmpeg = new FFmpeg();
+  await ffmpeg.load();
+  await ffmpeg.writeFile('input.mp4', await fetchFile(blob));
+  await ffmpeg.exec([
+    '-ss', startTime.toFixed(3),
+    '-i', 'input.mp4',
+    '-to', endTime.toFixed(3),
+    '-c:v', 'copy',
+    '-c:a', 'copy',
+    '-avoid_negative_ts', 'make_zero',
+    '-copyts',
+    'output_lossless.mp4'
+  ]);
+  const data = await ffmpeg.readFile('output_lossless.mp4');
+  return new Blob([data.buffer], { type: 'video/mp4' });
+};
+
+const trimmedVideoUrl = ref(null); // новое состояние для обрезанного видео
+const trimmedBlob = ref(null);
+const cutVideo = async () => {
+  if (!fileInput.value || !fileInput.value.files[0]) {
+    alert('Видео не загружено!');
+    return;
+  }
+
+  const parseTimeToSeconds = (timeStr) => {
+    const [h, m, sMs] = timeStr.split(':');
+    const [s, ms] = sMs.split('.');
+    return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
+  };
+
+  const startSec = parseTimeToSeconds(startTime.value);
+  const endSec = parseTimeToSeconds(endTime.value);
+
+  if (endSec <= startSec) {
+    alert('Время конца должно быть больше начала');
+    return;
+  }
+
+  try {
+    isAnalyzing.value = true;
+
+    const file = fileInput.value.files[0];
+    trimmedBlob.value = await trimVideo(file, startSec, endSec);
+    trimmedVideoUrl.value = URL.createObjectURL(trimmedBlob.value);
+    await handleAnalyze();
+  } catch (err) {
+    alert('Ошибка при обрезке видео: ' + err.message);
+  } finally {
+    isAnalyzing.value = false;
+  }
+  
+};
+
 const handleAnalyze = async () => {
+  
   if (!fileInput.value || !fileInput.value.files[0]) {
     alert('Пожалуйста, загрузите видео перед анализом.');
     return;
   }
   isAnalyzing.value = true;
 
-  const file = fileInput.value.files[0];
-  const formData = new FormData();
-  formData.append('video', file);
-
   try {
-    const response = await axios.post(`http://localhost:3000/upload/${encodeURIComponent(file.name)}`, formData, {
+    const formData = new FormData();
+    const originalFile = fileInput.value.files[0];
+    const fileName = originalFile ? originalFile.name : 'video.mp4';
+    formData.append('video', trimmedBlob.value, fileName);
+    // Отправляем POST-запрос на сервер
+    await axios.post(`http://localhost:3000/upload/${fileName}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
 
-    const result = response.data;
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    analysisResult.value = {
-      accuracy: result.accuracy || 87,
-      timing: result.timing || 92,
-      technique: result.technique || 84,
-      overall: result.overall || 88,
-      feedback: result.feedback || [
-        'Отличная синхронизация с ритмом!',
-        'Небольшие погрешности в позициях рук',
-        'Прекрасная энергия и подача!',
-      ]
-    }
-      } catch (error) {
-    alert(error.message || 'Ошибка при анализе видео');
+    message.value = 'Видео успешно отправлено на анализ.';
+  } catch (error) {
+    alert('Ошибка при отправке видео: ' + error.message);
   } finally {
     isAnalyzing.value = false;
-    refreshIcons();
   }
 };
+
+
 </script>
