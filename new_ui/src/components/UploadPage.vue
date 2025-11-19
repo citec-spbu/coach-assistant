@@ -57,7 +57,7 @@
             ></video>
           </div>
           <div class="text-white font-mono text-center mt-2">
-            {{ timeDisplay }}
+            Текущее время: {{ timeDisplay }}
           </div>
         </div>
       </div>
