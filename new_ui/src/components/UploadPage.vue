@@ -57,7 +57,7 @@
             ></video>
           </div>
           <div class="text-white font-mono text-center mt-2">
-            {{ timeDisplay }}
+            Текущее время: {{ timeDisplay }}
           </div>
         </div>
       </div>
@@ -385,7 +385,7 @@ const cutVideo = async () => {
     const file = fileInput.value.files[0];
     trimmedBlob.value = await trimVideo(file, startSec, endSec);
     trimmedVideoUrl.value = URL.createObjectURL(trimmedBlob.value);
-    await handleAnalyze();
+    await handleAnalyze(trimmedVideoUrl.value.split('/').pop());
   } catch (err) {
     alert('Ошибка при обрезке видео: ' + err.message);
   } finally {
@@ -394,7 +394,7 @@ const cutVideo = async () => {
   
 };
 
-const handleAnalyze = async () => {
+const handleAnalyze = async (blobValue) => {
   
   if (!fileInput.value || !fileInput.value.files[0]) {
     alert('Пожалуйста, загрузите видео перед анализом.');
@@ -403,17 +403,16 @@ const handleAnalyze = async () => {
   isAnalyzing.value = true;
 
   try {
-    const formData = new FormData();
-    const originalFile = fileInput.value.files[0];
-    const fileName = originalFile ? originalFile.name : 'video.mp4';
-    formData.append('video', trimmedBlob.value, fileName);
+    const formData=new FormData();
+    const filename = `${blobValue}.mp4`
+    formData.append('video', trimmedBlob.value, filename);
     // Отправляем POST-запрос на сервер
-    await axios.post(`http://localhost:3000/upload/${fileName}`, formData, {
+    await axios.post(`http://localhost:3000/video/${filename}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-
+    socket.emit('register-upload', `http://localhost:3000/uploads/${filename}`)
     message.value = 'Видео успешно отправлено на анализ.';
   } catch (error) {
     alert('Ошибка при отправке видео: ' + error.message);
