@@ -57,7 +57,7 @@
             ></video>
           </div>
           <div class="text-white font-mono text-center mt-2">
-            Текущее время: {{ timeDisplay }}
+            {{ timeDisplay }}
           </div>
         </div>
       </div>
@@ -292,12 +292,49 @@ const handleVideoUpload = (e) => {
 };
 
 const handleDrop = (e) => {
-  const file = e.dataTransfer?.files?.[0]
-  if (file) {
-    uploadedVideo.value = URL.createObjectURL(file)
-    analysisResult.value = null
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+
+  // Проверка на видеофайл
+  if (!file.type.startsWith('video/')) {
+    alert('Пожалуйста, выберите видеофайл.');
+    return;
   }
-}
+
+  // Проверка разрешения видео и последующая установка
+  const url = URL.createObjectURL(file);
+  const tmpVideo = document.createElement('video');
+  tmpVideo.preload = 'metadata';
+  tmpVideo.src = url;
+  tmpVideo.onloadedmetadata = () => {
+    if (tmpVideo.videoWidth !== 1920 || tmpVideo.videoHeight !== 1080) {
+      alert(`Видео не соответствует требуемому разрешению 1920x1080. Загружено: ${tmpVideo.videoWidth}x${tmpVideo.videoHeight}`);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    uploadedVideo.value = url;
+    processedVideoUrl.value = null;
+    message.value = '';
+    analysisResult.value = null;
+
+    // Установим endTime равным длительности видео с миллисекундами
+    const duration = tmpVideo.duration; // длительность в секундах с дробной частью
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    const seconds = Math.floor(duration % 60);
+    const milliseconds = Math.floor((duration % 1) * 1000);
+    endTime.value = 
+      String(hours).padStart(2, '0') + ':' +
+      String(minutes).padStart(2, '0') + ':' +
+      String(seconds).padStart(2, '0') + '.' +
+      String(milliseconds).padStart(3, '0');
+  };
+  tmpVideo.onerror = () => {
+    alert('Ошибка при загрузке видео.');
+    URL.revokeObjectURL(url);
+  };
+};
+
 
 import { FFmpeg } from '/node_modules/@ffmpeg/ffmpeg/dist/esm/index.js';
 import { fetchFile } from '/node_modules/@ffmpeg/util/dist/esm/index.js';
@@ -348,7 +385,7 @@ const cutVideo = async () => {
     const file = fileInput.value.files[0];
     trimmedBlob.value = await trimVideo(file, startSec, endSec);
     trimmedVideoUrl.value = URL.createObjectURL(trimmedBlob.value);
-    await handleAnalyze(trimmedVideoUrl.value.split('/').pop());
+    await handleAnalyze();
   } catch (err) {
     alert('Ошибка при обрезке видео: ' + err.message);
   } finally {
@@ -357,7 +394,7 @@ const cutVideo = async () => {
   
 };
 
-const handleAnalyze = async (blobValue) => {
+const handleAnalyze = async () => {
   
   if (!fileInput.value || !fileInput.value.files[0]) {
     alert('Пожалуйста, загрузите видео перед анализом.');
@@ -367,15 +404,15 @@ const handleAnalyze = async (blobValue) => {
 
   try {
     const formData = new FormData();
-    const filename = `${blobValue}.mp4`
-    formData.append('video', trimmedBlob.value, filename);
+    const originalFile = fileInput.value.files[0];
+    const fileName = originalFile ? originalFile.name : 'video.mp4';
+    formData.append('video', trimmedBlob.value, fileName);
     // Отправляем POST-запрос на сервер
-    await axios.post(`http://localhost:3000/video/${filename}`, formData, {
+    await axios.post(`http://localhost:3000/upload/${fileName}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-    socket.emit('register-upload', `http://localhost:3000/uploads/${filename}`)
 
     message.value = 'Видео успешно отправлено на анализ.';
   } catch (error) {
