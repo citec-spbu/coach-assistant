@@ -15,7 +15,9 @@ build/
 *.pth
 *.pt
 *.h5
-*.pkl
+
+# НЕ игнорируем label_encoder.pkl - он нужен!
+# *.pkl
 
 # Датасеты (слишком большие)
 датасет/
@@ -68,4 +70,10 @@ demo_*.py
 *_test.py
 *_quick.py
 *_mini.py
+
+
+
+
+
+
 

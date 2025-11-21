@@ -1,46 +1,88 @@
-# Проект: Ассистент тренера
+# Dance Movement Classifier
 
-### Описание проекта
-В мире существует много разных видов спорта. Кто-то скажет чтобы победить в том или ином виде спорта нужно быть физически сильным или выносливым, а может обладать взрывным характером. Наверное для каждого вида спорта есть такая уникальная характеристика, но часто победителем становится не самый сильный или ловкий спортсмен. Есть одна незаметная на первый взгляд вещь объединяющая все виды спорта, вещь позволяющая компенсировать недостатки характеристик, а иногда и превысить возможный предел - это техника выполнения упражнения. Спортсмены - профессионалы тратят колоссальное количество времени повторяя простые движения доводя их до автоматизма.
-Целью проекта является разработка системы, помогающей спортсмену в области спортивных бальных танцев оценить качество своих упражнений с точки зрения точности повторения и качества выполнения. 
+Классификация танцевальных движений с оценкой качества исполнения.
 
-### Технические требования
-Необходимо реализовать систему анализа видео изображения спортсмена. Система должна уметь определять в видео потоке участки правильного/неправильного выполнения упражнения. Разрабатываемая система должна оценивать ряд факторов: точность повторения движения, нарушение периода повторения упражнения(ритма), позиционирование спортсмена на площадке.
-Пример: В качестве примера рассмотрим спортивные бальные танцы. В этой дисциплине важны точности движений, а также чувство ритма, юные спортсмены часто сбиваются с ритма танца в результате чего в паре нарушается устойчивость и синхронность. Ассистент тренера мог бы легко подсказать фигуру в танце в которой сбился ритм или указать на ошибку в движении, а может и указать на явное эмоциональное утомление спортсмена. В качестве следующего примера рассмотрим тренажерный зал, тренер показал как правильно подтягиваться и пошёл контролировать других участников тренировки, разрабатываемый ассистент мог бы легко указать на ошибку в упражнении и сообщить после какого подхода она началось нарушение техники исполнения.
+## Быстрый старт
 
-### Технический стек:
-Web: JavaScript, HTML, CSS, Vue.js, Python, FastAPI, Node.jsx, Koa
+### 1. Установка
 
+```bash
+git clone https://github.com/citec-spbu/coach-assistant.git
+cd coach-assistant/dance_classifier
+pip install -r requirements.txt
+```
 
-# DancePose Module
+### 2. Скачать модель
 
-The **DancePose** module is designed to detect a dancer’s body and extract keypoint coordinates from video frames.  
-It serves as the foundation for motion analysis and performance evaluation in the *Coach Assistant* project.
+**Облако:** https://cloud.mail.ru/public/DG9E/EuZWkp6gn
 
----
+Скачать файлы:
+- `models/best_model_20pct.pth` → положить в `dance_classifier/models/`
+- `yolov8m-pose.pt` → положить в `coach-assistant/`
 
-## 📁 Project Structure and File Descriptions
+### 3. Использование
 
-- **configs/default.yaml** — Configuration file containing video path, model name, confidence thresholds, and output options.  
-- **scripts/run_pose.py** — Main entry script that loads configuration, runs YOLOv8-Pose inference, and saves results.  
-- **src/inference/pose_infer.py** — Core inference logic: loads the pretrained model and performs per-frame pose detection.  
-- **src/viz/overlay.py** — Visualization utilities: draws skeletons and keypoints on video frames to produce overlay output.  
-- **src/utils/io_utils.py** — Handles input/output operations such as directory creation, JSONL writing, and logging.  
+```python
+from dance_classifier.inference.predict import DanceClassifierPredictor
 
----
+predictor = DanceClassifierPredictor(
+    model_path="dance_classifier/models/best_model_20pct.pth",
+    metadata_path="dance_classifier/data/metadata.json",
+    scaler_path="dance_classifier/data/scaler.pkl",
+    label_encoder_path="dance_classifier/data/label_encoder.pkl"
+)
 
-## How to Use
+result = predictor.predict_from_poses("poses.jsonl")
+```
 
-1. Install the dependencies listed in the requirements section.
-2. The data I used comes from this dataset:
-https://google.github.io/aistplusplus_dataset/factsfigures.html
-3. Open the configuration file 'configs/default.yaml' and modify paths for your video input and model weights if necessary.  
-4. Run run_pose.py
+## Выход
 
----
+```json
+{
+    "predicted_class": "FootChange",
+    "confidence": 0.806,
+    "spatial_similarity": {"score": 78.7},
+    "timing": {"score": 76.2},
+    "balance": {"score": 97.4},
+    "classifier_clarity": {"score": 86.7}
+}
+```
 
-## Notes
+## Метрики
 
-The current prototype supports single-person detection only.
-Model weights (yolov8s-pose.pt or similar) will be downloaded automatically if not found locally.
-The module is built on the Ultralytics YOLOv8-Pose framework and provides pose data for further dance-quality evaluation.
+- **spatial_similarity**: Техника (DTW с эталоном)
+- **timing**: Тайминг (шаги vs музыка)
+- **balance**: Баланс (стабильность)
+- **classifier_clarity**: Уверенность
+
+## Модель
+
+- **Архитектура:** TCN + GRU
+- **Accuracy:** 63%
+- **Classes:** 13 фигур латины
+
+## Структура
+
+```
+dance_classifier/
+├── data_preparation/    # Подготовка датасета
+├── models/             # Архитектуры моделей
+├── inference/          # Предсказание
+├── utils/              # DTW-метрики
+└── data/               # metadata, scaler, encoder
+```
+
+## Requirements
+
+- Python 3.8+
+- PyTorch 2.0+
+- OpenCV
+- librosa
+- fastdtw
+
+Полный список: `requirements.txt`
+
+## Ссылки
+
+- **Модель:** https://cloud.mail.ru/public/DG9E/EuZWkp6gn
+- **GitHub:** https://github.com/citec-spbu/coach-assistant
