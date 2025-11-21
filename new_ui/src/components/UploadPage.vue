@@ -177,7 +177,7 @@ const message = ref('')
 
 let socket = null
 const processedVideoUrl = ref(null)
-
+const uploadedFile = ref(null);
 
 onMounted(() => {
   socket = io()
@@ -196,7 +196,7 @@ onMounted(() => {
     const result = JSON.parse(data.metadata);
     analysisResult.value = {
       overall: Math.round(result.confidence * 100),
-      feedback: result.figures
+      feedback: [getFigure(result.figures)]
     };
 
     processedVideoUrl.value = data.download_url;
@@ -222,6 +222,25 @@ onUnmounted(() => {
 })
 
 
+const getFigure = (figure) => {
+  const Figures = {
+    "Aida": "Открывающая позиция",
+    "Alemana": "Поворотная фигура",
+    "Fan": "Открытие в веерную позицию",
+    "FootChange": "Базовая смена стопы",
+    "HandToHandL": "Рука к руке влево",
+    "HandToHandR": "Рука к руке вправо",
+    "HockyStick": "Хоккейная клюшка",
+    "NaturalTop": "Натуральный топ",
+    "NewYorkL": "Нью-Йорк влево",
+    "NewYorkR": "Нью-Йорк вправо",
+    "NotPerforming": "Нейтральная/отдыхающая позиция",
+    "OpenBasic": "Открытый базовый",
+    "OpeningOut": "Открытие наружу",
+    "SpotTurn": "Спот поворот"
+  };
+  return Figures[figure];
+}
 
 
 const formatTime = (time) => {
@@ -257,8 +276,11 @@ const handleVideoUpload = (e) => {
     alert('Пожалуйста, выберите видеофайл.')
     return
   }
+
+  uploadedFile.value = file;
   const url = URL.createObjectURL(file);
   const tmpVideo = document.createElement('video');
+
   tmpVideo.preload = 'metadata';
   tmpVideo.src = url;
   tmpVideo.onloadedmetadata = () => {
@@ -292,7 +314,7 @@ const handleVideoUpload = (e) => {
 };
 
 const handleDrop = (e) => {
-  const file = e.dataTransfer?.files?.[0];
+  const file = e.dataTransfer?.files[0];
   if (!file) return;
 
   // Проверка на видеофайл
@@ -300,7 +322,8 @@ const handleDrop = (e) => {
     alert('Пожалуйста, выберите видеофайл.');
     return;
   }
-
+  console.log("File", file)
+  uploadedFile.value = file;
   // Проверка разрешения видео и последующая установка
   const url = URL.createObjectURL(file);
   const tmpVideo = document.createElement('video');
@@ -360,7 +383,7 @@ const trimVideo = async (blob, startTime, endTime) => {
 const trimmedVideoUrl = ref(null); // новое состояние для обрезанного видео
 const trimmedBlob = ref(null);
 const cutVideo = async () => {
-  if (!fileInput.value || !fileInput.value.files[0]) {
+  if (!uploadedFile.value) {
     alert('Видео не загружено!');
     return;
   }
@@ -382,7 +405,7 @@ const cutVideo = async () => {
   try {
     isAnalyzing.value = true;
 
-    const file = fileInput.value.files[0];
+    const file = uploadedFile.value;
     trimmedBlob.value = await trimVideo(file, startSec, endSec);
     trimmedVideoUrl.value = URL.createObjectURL(trimmedBlob.value);
     await handleAnalyze(trimmedVideoUrl.value.split('/').pop());
@@ -396,8 +419,8 @@ const cutVideo = async () => {
 
 const handleAnalyze = async (blobValue) => {
   
-  if (!fileInput.value || !fileInput.value.files[0]) {
-    alert('Пожалуйста, загрузите видео перед анализом.');
+  if (!uploadedFile.value) {
+    alert('Видео не загружено!');
     return;
   }
   isAnalyzing.value = true;

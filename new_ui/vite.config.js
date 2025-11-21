@@ -6,7 +6,7 @@ export default defineConfig({
   server: {
     port: 5173,  // Vue на порту 5173
     proxy: {
-      '/upload': {
+      '/video': {
         target: 'http://localhost:3000',  // Бэкенд на 3000
         changeOrigin: true,
       },
