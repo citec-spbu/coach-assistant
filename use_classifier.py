@@ -37,13 +37,37 @@ class GRUModel(torch.nn.Module):
         return self.fc(h[-1])
 
 
-def classify_video(poses_file, model_path="best_model_10pct.pth"):
+class HybridModel(torch.nn.Module):
+    """Гибридная TCN+GRU модель"""
+    def __init__(self, input_size, num_classes):
+        super().__init__()
+        # TCN слои
+        self.tcn = torch.nn.Sequential(
+            torch.nn.Conv1d(input_size, 64, kernel_size=3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.Conv1d(64, 128, kernel_size=3, padding=1),
+            torch.nn.ReLU()
+        )
+        # GRU слои
+        self.gru = torch.nn.GRU(128, 64, num_layers=2, batch_first=True, dropout=0.3)
+        self.fc = torch.nn.Linear(64, num_classes)
+    
+    def forward(self, x):
+        # x: (batch, seq_len, features)
+        x = x.transpose(1, 2)  # (batch, features, seq_len)
+        x = self.tcn(x)
+        x = x.transpose(1, 2)  # (batch, seq_len, features)
+        _, h = self.gru(x)
+        return self.fc(h[-1])
+
+
+def classify_video(poses_file, model_path="best_model_20pct.pth"):
     """
     Классифицировать танцевальное движение из poses.jsonl
     
     Args:
         poses_file: путь к poses.jsonl
-        model_path: путь к модели (по умолчанию best_model_10pct.pth)
+        model_path: путь к модели (по умолчанию best_model_20pct.pth)
     
     Returns:
         dict с результатами:
@@ -67,8 +91,18 @@ def classify_video(poses_file, model_path="best_model_10pct.pth"):
         input_size = scaler.mean_.shape[0]
         num_classes = len(label_encoder.classes_)
         
-        model = GRUModel(input_size=input_size, num_classes=num_classes)
-        model.load_state_dict(checkpoint['model_state_dict'])
+        # Определяем архитектуру модели по ключам в state_dict
+        state_dict = checkpoint['model_state_dict']
+        is_hybrid = any('tcn' in key for key in state_dict.keys())
+        
+        if is_hybrid:
+            print("  Architecture: Hybrid TCN+GRU")
+            model = HybridModel(input_size=input_size, num_classes=num_classes)
+        else:
+            print("  Architecture: GRU")
+            model = GRUModel(input_size=input_size, num_classes=num_classes)
+        
+        model.load_state_dict(state_dict)
         model.eval()
         
         # 2. Чтение поз
@@ -145,7 +179,7 @@ if __name__ == '__main__':
         sys.exit(1)
     
     poses_file = sys.argv[1]
-    model_path = sys.argv[2] if len(sys.argv) > 2 else "best_model_10pct.pth"
+    model_path = sys.argv[2] if len(sys.argv) > 2 else "best_model_20pct.pth"
     
     print(f"Классификация: {poses_file}")
     print(f"Модель: {model_path}")
@@ -158,4 +192,5 @@ if __name__ == '__main__':
         print(f"Uverennost: {result['confidence']*100:.1f}%")
     else:
         print(f"\nOshibka: {result['error']}")
+
 
