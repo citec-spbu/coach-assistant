@@ -392,7 +392,13 @@ class DanceClassifierPredictor:
             # Проверяем наличие эталона
             ref_path = self.reference_dir / f"{predicted_class}.npy"
             if not ref_path.exists():
-                return {"error": "No reference trajectory found"}
+                # Если нет эталона, возвращаем нейтральное значение
+                return {
+                    "score": 50.0,
+                    "mean_distance": None,
+                    "error_segments": [],
+                    "note": f"No reference trajectory for {predicted_class}, using neutral score"
+                }
             
             reference = np.load(ref_path)
             sequence_norm = self.scaler.transform(sequence)
@@ -505,11 +511,12 @@ class DanceClassifierPredictor:
                 poses_data["fps"] = 25.0  # предполагаем
             
             video_path = Path(video_path)
+            # Если путь не абсолютный, делаем его абсолютным
             if not video_path.is_absolute():
-                video_path = (self.videos_dir / video_path).resolve()
+                video_path = video_path.resolve()
             
             if not video_path.exists():
-                return {"error": "Video file not found"}
+                return {"error": f"Video file not found: {video_path}"}
             
             timing_res = compute_timing_metric(
                 poses_data=poses_data,
@@ -524,7 +531,8 @@ class DanceClassifierPredictor:
                 "error_segments": timing_res.error_segments
             }
         except Exception as e:
-            return {"error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            return {"error": error_msg}
     
     def _compute_balance(
         self,
@@ -566,7 +574,8 @@ class DanceClassifierPredictor:
                 "error_segments": balance_res.error_segments
             }
         except Exception as e:
-            return {"error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            return {"error": error_msg}
 
 
 def main():
