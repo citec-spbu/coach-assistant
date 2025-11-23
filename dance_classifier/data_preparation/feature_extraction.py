@@ -110,16 +110,24 @@ class FeatureExtractor:
             valid_mask: маска валидных кадров
         """
         frames = poses_data.get('frames', [])
+        if not frames:
+            return [], np.array([], dtype=bool)
+        
         feature_list = []
         valid_mask = []
         
-        for frame in frames:
-            features = self._extract_frame_features(frame)
-            feature_list.append(features)
-            
-            # Кадр валиден, если есть хотя бы основные точки
-            is_valid = self._is_frame_valid(features)
-            valid_mask.append(is_valid)
+        for i, frame in enumerate(frames):
+            try:
+                features = self._extract_frame_features(frame)
+                feature_list.append(features)
+                
+                # Кадр валиден, если есть хотя бы основные точки
+                is_valid = self._is_frame_valid(features)
+                valid_mask.append(is_valid)
+            except Exception as e:
+                # Если ошибка при обработке кадра, добавляем пустые признаки
+                feature_list.append({})
+                valid_mask.append(False)
         
         return feature_list, np.array(valid_mask, dtype=bool)
     

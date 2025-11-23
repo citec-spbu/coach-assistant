@@ -270,85 +270,113 @@ class DanceClassifierPredictor:
             }
         
         # Извлекаем признаки через FeatureExtractor
-        feature_extractor = FeatureExtractor(min_confidence=0.3)
-        feature_names = get_simple_features()
-        feature_list, valid_mask = feature_extractor.extract_sequence_features(poses_data)
-        feature_array, actual_feature_names, valid_indices = feature_extractor.features_to_array(
-            feature_list, feature_names
-        )
-        
-        if len(valid_indices) < self.sequence_length:
-            # Если валидных кадров недостаточно, используем все кадры
-            if len(feature_array) >= self.sequence_length:
-                valid_indices = list(range(len(feature_array)))
-            else:
-                return {
-                    'success': False,
-                    'error': f'Not enough frames: {len(feature_array)} < {self.sequence_length}'
-                }
-        
-        # Берём последнюю последовательность
-        sequence = feature_array[-self.sequence_length:]
-        
-        # Дополнение до нужного количества признаков (если нужно)
-        expected_features = self.scaler.mean_.shape[0]
-        if sequence.shape[1] < expected_features:
-            padding = np.zeros((sequence.shape[0], expected_features - sequence.shape[1]))
-            sequence = np.concatenate([sequence, padding], axis=1)
-        elif sequence.shape[1] > expected_features:
-            sequence = sequence[:, :expected_features]
-        
-        sequence = self._interpolate_missing(sequence)
-        
-        # Предсказание
-        predicted_class, probabilities = self.predict_sequence(sequence)
-        
-        result = {
-            'success': True,
-            'predicted_class': predicted_class,
-            'confidence': float(probabilities[np.argmax(probabilities)]),
-            'probabilities': {
-                self.label_encoder.classes_[i]: float(prob)
-                for i, prob in enumerate(probabilities)
-            }
-        }
-        
-        # === ИНТЕГРАЦИЯ DTW-МЕТРИК ===
-        if compute_metrics:
-            try:
-                # 1. Spatial Similarity (техника с DTW)
-                spatial_info = self._compute_spatial_similarity(
-                    sequence, predicted_class, poses, self.sequence_length
-                )
-                if spatial_info:
-                    result['spatial_similarity'] = spatial_info
-                
-                # 2. Classifier Clarity (уверенность модели по окнам)
-                clarity_info = self._compute_classifier_clarity(
-                    sequence, predicted_class, poses, self.sequence_length
-                )
-                if clarity_info:
-                    result['classifier_clarity'] = clarity_info
-                
-                # 3. Timing (только если есть видео)
-                if video_path:
-                    timing_info = self._compute_timing(
-                        poses_json_path, video_path, predicted_class
-                    )
-                    if timing_info:
-                        result['timing'] = timing_info
-                
-                # 4. Balance (наклон корпуса, CoM)
-                balance_info = self._compute_balance(
-                    poses_json_path, sequence.shape[0]
-                )
-                if balance_info:
-                    result['balance'] = balance_info
+        print("3")
+        try:
+            # Проверяем структуру данных перед обработкой
+            if not poses_data or 'frames' not in poses_data:
+                raise ValueError(f"poses_data не содержит 'frames': {list(poses_data.keys()) if poses_data else 'пустой словарь'}")
             
-            except Exception as e:
-                result['metrics_error'] = f"Metrics computation failed: {str(e)}"
-        
-        return result
+            if len(poses_data['frames']) == 0:
+                raise ValueError("poses_data['frames'] пуст")
+            
+            # Проверяем формат первого кадра
+            first_frame = poses_data['frames'][0]
+            if 'pose_landmarks' not in first_frame and 'pose_world_landmarks' not in first_frame:
+                raise ValueError(f"Кадр не содержит landmarks: {list(first_frame.keys())}")
+            
+            feature_extractor = FeatureExtractor(min_confidence=0.3)
+            feature_names = get_simple_features()
+            
+            print(f"3.1: Обработка {len(poses_data['frames'])} кадров...")
+            feature_list, valid_mask = feature_extractor.extract_sequence_features(poses_data)
+            print(f"3.2: Извлечено {len(feature_list)} признаков, валидных: {valid_mask.sum()}")
+            
+            feature_array, actual_feature_names, valid_indices = feature_extractor.features_to_array(
+                feature_list, feature_names
+            )
+            print(f"3.3: Массив признаков: {feature_array.shape}, валидных индексов: {len(valid_indices)}")
+            
+            if len(valid_indices) < self.sequence_length:
+                # Если валидных кадров недостаточно, используем все кадры
+                if len(feature_array) >= self.sequence_length:
+                    valid_indices = list(range(len(feature_array)))
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Not enough frames: {len(feature_array)} < {self.sequence_length}'
+                    }
+            
+            # Берём последнюю последовательность
+            sequence = feature_array[-self.sequence_length:]
+            
+            # Дополнение до нужного количества признаков (если нужно)
+            expected_features = self.scaler.mean_.shape[0]
+            if sequence.shape[1] < expected_features:
+                padding = np.zeros((sequence.shape[0], expected_features - sequence.shape[1]))
+                sequence = np.concatenate([sequence, padding], axis=1)
+            elif sequence.shape[1] > expected_features:
+                sequence = sequence[:, :expected_features]
+            
+            sequence = self._interpolate_missing(sequence)
+            
+            # Предсказание
+            predicted_class, probabilities = self.predict_sequence(sequence)
+            
+            result = {
+                'success': True,
+                'predicted_class': predicted_class,
+                'confidence': float(probabilities[np.argmax(probabilities)]),
+                'probabilities': {
+                    self.label_encoder.classes_[i]: float(prob)
+                    for i, prob in enumerate(probabilities)
+                }
+            }
+            
+            # === ИНТЕГРАЦИЯ DTW-МЕТРИК ===
+            if compute_metrics:
+                try:
+                    # 1. Spatial Similarity (техника с DTW)
+                    spatial_info = self._compute_spatial_similarity(
+                        sequence, predicted_class, feature_array, self.sequence_length
+                    )
+                    if spatial_info:
+                        result['spatial_similarity'] = spatial_info
+                    
+                    # 2. Classifier Clarity (уверенность модели по окнам)
+                    clarity_info = self._compute_classifier_clarity(
+                        sequence, predicted_class, feature_array, self.sequence_length
+                    )
+                    if clarity_info:
+                        result['classifier_clarity'] = clarity_info
+                    
+                    # 3. Timing (только если есть видео)
+                    if video_path:
+                        timing_info = self._compute_timing(
+                            poses_json_path, video_path, predicted_class
+                        )
+                        if timing_info:
+                            result['timing'] = timing_info
+                    
+                    # 4. Balance (наклон корпуса, CoM)
+                    balance_info = self._compute_balance(
+                        poses_json_path, sequence.shape[0]
+                    )
+                    if balance_info:
+                        result['balance'] = balance_info
+                
+                except Exception as e:
+                    result['metrics_error'] = f"Metrics computation failed: {str(e)}"
+            
+            print("4")
+            return result
+        except Exception as e:
+            import traceback
+            error_msg = f"Ошибка при извлечении признаков: {str(e)}\n{traceback.format_exc()}"
+            print(f"ERROR: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg
+            }
     
     def _compute_spatial_similarity(
         self,
