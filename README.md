@@ -1,88 +1,96 @@
-# Dance Movement Classifier
+# Классификатор танцевальных движений
 
-Классификация танцевальных движений с оценкой качества исполнения.
+Система распознавания танцевальных фигур на основе анализа поз человека в видео.
 
-## Быстрый старт
+## Компоненты
 
-### 1. Установка
+1. DancePose - извлечение поз из видео с помощью YOLOv8-Pose
+2. Dance Classifier - классификация танцевальных движений с помощью GRU/TCN/Hybrid моделей
+
+## Установка
 
 ```bash
-git clone https://github.com/citec-spbu/coach-assistant.git
-cd coach-assistant/dance_classifier
-pip install -r requirements.txt
+pip install -r dance_classifier/requirements.txt
 ```
 
-### 2. Скачать модель
+## Использование
 
-**Облако:** https://cloud.mail.ru/public/DG9E/EuZWkp6gn
+### Извлечение поз из видео
 
-Скачать файлы:
-- `models/best_model_20pct.pth` → положить в `dance_classifier/models/`
-- `yolov8m-pose.pt` → положить в `coach-assistant/`
+```python
+from dancepose.scripts.run_pose import main
 
-### 3. Использование
+main(video_path="video.mp4", output_dir="outputs/my_video")
+```
+
+### Классификация движений
 
 ```python
 from dance_classifier.inference.predict import DanceClassifierPredictor
 
-predictor = DanceClassifierPredictor(
-    model_path="dance_classifier/models/best_model_20pct.pth",
-    metadata_path="dance_classifier/data/metadata.json",
-    scaler_path="dance_classifier/data/scaler.pkl",
-    label_encoder_path="dance_classifier/data/label_encoder.pkl"
-)
-
-result = predictor.predict_from_poses("poses.jsonl")
+predictor = DanceClassifierPredictor("dance_classifier/best_model_20pct.pth")
+result = predictor.predict_from_poses("poses.jsonl", video_path="video.mp4")
 ```
 
-## Выход
+Результат содержит:
+- predicted_class: название фигуры
+- confidence: уверенность модели (0-1)
+- spatial_similarity: техника исполнения (score 0-100)
+- classifier_clarity: разборчивость фигуры (score 0-100)
+- timing: ритм (score 0-100, если есть video_path)
+- balance: баланс (score 0-100)
 
-```json
-{
-    "predicted_class": "FootChange",
-    "confidence": 0.806,
-    "spatial_similarity": {"score": 78.7},
-    "timing": {"score": 76.2},
-    "balance": {"score": 97.4},
-    "classifier_clarity": {"score": 86.7}
-}
-```
-
-## Метрики
-
-- **spatial_similarity**: Техника (DTW с эталоном)
-- **timing**: Тайминг (шаги vs музыка)
-- **balance**: Баланс (стабильность)
-- **classifier_clarity**: Уверенность
-
-## Модель
-
-- **Архитектура:** TCN + GRU
-- **Accuracy:** 63%
-- **Classes:** 13 фигур латины
-
-## Структура
+## Структура проекта
 
 ```
-dance_classifier/
-├── data_preparation/    # Подготовка датасета
-├── models/             # Архитектуры моделей
-├── inference/          # Предсказание
-├── utils/              # DTW-метрики
-└── data/               # metadata, scaler, encoder
+coach-assistant/
+├── dancepose/                    # Извлечение поз
+│   ├── src/inference/           # YOLOv8 инференс
+│   ├── src/utils/               # Утилиты
+│   ├── src/viz/                 # Визуализация
+│   └── scripts/                  # Скрипты запуска
+│
+├── dance_classifier/            # Классификация движений
+│   ├── data_preparation/        # Подготовка данных
+│   ├── models/                  # GRU, TCN, Hybrid модели
+│   ├── training/                # Обучение
+│   ├── inference/               # Предсказание
+│   ├── utils/                   # DTW-метрики качества
+│   └── reference_trajectories/  # Эталонные траектории
+│
+└── outputs/                     # Результаты обработки
 ```
 
-## Requirements
+## Модели
+
+Доступны три архитектуры:
+- GRU - рекуррентная нейронная сеть
+- TCN - временная свёрточная сеть
+- Hybrid - комбинация TCN + GRU
+
+Выбор модели в конфиге: `model_type: "gru"` / `"tcn"` / `"hybrid"`
+
+## Требования
 
 - Python 3.8+
-- PyTorch 2.0+
+- PyTorch 1.12+
 - OpenCV
-- librosa
-- fastdtw
+- Ultralytics YOLOv8
+- NumPy, Pandas, Scikit-learn
 
-Полный список: `requirements.txt`
+## Обучение
 
-## Ссылки
+```bash
+cd dance_classifier
+python training/train.py --config training/config.yaml
+```
 
-- **Модель:** https://cloud.mail.ru/public/DG9E/EuZWkp6gn
-- **GitHub:** https://github.com/citec-spbu/coach-assistant
+## Метрики качества
+
+Модель возвращает 4 метрики качества исполнения:
+- Spatial Similarity - техника (сравнение с эталоном через DTW)
+- Classifier Clarity - разборчивость фигуры
+- Timing - ритм (синхронизация с музыкой)
+- Balance - баланс и стабильность
+
+Подробнее в файле `ПОНЯТНОЕ_ОБЪЯСНЕНИЕ_МЕТРИК_И_ПРОЦЕССОВ.md`

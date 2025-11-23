@@ -4,76 +4,74 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.egg-info/
-dist/
 build/
-
-# Jupyter Notebook
-.ipynb_checkpoints
+dist/
+*.egg-info/
 
 # Модели (слишком большие для GitHub)
 *.pth
 *.pt
+*.ckpt
 *.h5
+*.pb
 
-# НЕ игнорируем label_encoder.pkl - он нужен!
-# *.pkl
-
-# Датасеты (слишком большие)
+# Данные
+outputs/
 датасет/
 dataset_*/
-*.csv
-*.zip
+*.pkl
+*.npy
+!dance_classifier/reference_trajectories/*.npy
 
-# Обработанные видео и результаты
-outputs/
-outputs_*/
+# Видео
 *.mp4
 *.avi
 *.mov
-*.MOV
+*.mkv
 
-# Видео
-Видео движение/
-*.mp4
-*.avi
-*.MOV
-
-# Временные файлы
-*.log
+# Большие файлы
 *.jsonl
-*.tfevents
+*.csv
+*.zip
+*.tar.gz
+
+# Временные скрипты
+test_*.py
+*_test.py
+create_*.py
+validate_*.py
+*_simple.py
+*_demo.py
+*_example.py
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-*
 
-# OS
-.DS_Store
-Thumbs.db
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Логи
+*.log
+logs/
+
+# Окружение
+.env
+venv/
+env/
+ENV/
 
 # Результаты
 results_*.json
-*.png
-*.jpg
-*.jpeg
+validation_results.json
+analysis_summary.json
 
-# Временные скрипты
-train_*.py
-test_*.py
-check_*.py
-analyze_*.py
-process_*.py
-demo_*.py
-*_test.py
-*_quick.py
-*_mini.py
-
-
-
-
-
-
-
+# Временные файлы
+*.tmp
+*.bak
+*.swp
+.DS_Store
