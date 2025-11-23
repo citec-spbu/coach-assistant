@@ -793,12 +793,14 @@ def main():
     dance_classifier_root = current_file.parent.parent
     # Модель может быть в основной папке coach-assistant
     main_coach_dir = Path(r"C:\Users\1\!PYTHON_DZ\coach-assistant\dance_classifier")
-    if (main_coach_dir / "best_model_20pct_adapted.pth").exists():
-        model_path = main_coach_dir / "best_model_20pct_adapted.pth"
-    elif (main_coach_dir / "best_model_20pct.pth").exists():
+    # Используем best_model_20pct.pth (единообразно)
+    if (main_coach_dir / "best_model_20pct.pth").exists():
         model_path = main_coach_dir / "best_model_20pct.pth"
+    elif (main_coach_dir / "best_model_20pct_adapted.pth").exists():
+        # Fallback на adapted версию, если основной нет
+        model_path = main_coach_dir / "best_model_20pct_adapted.pth"
     else:
-        model_path = dance_classifier_root / "best_model_20pct_adapted.pth"
+        model_path = dance_classifier_root / "best_model_20pct.pth"
     metadata_path = dance_classifier_root / "dataset" / "metadata.json"
     scaler_path = dance_classifier_root / "dataset" / "scaler.pkl"
     label_encoder_path = dance_classifier_root / "dataset" / "label_encoder.pkl"
