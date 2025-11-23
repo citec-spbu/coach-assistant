@@ -98,13 +98,37 @@
       <!-- Processed Video Section -->
       <div v-if="processedVideoUrl" class="bg-gray-800 rounded-2xl p-8 border border-gray-700">
         <h3 class="text-2xl font-bold text-white mb-6 text-center">Результат анализа</h3>
-        <!-- Scores -->
-        <div class="grid place-items-center mb-8">
-          <div class="bg-gradient-to-r from-pink-500/20 to-violet-500/20 rounded-xl p-4 text-center border border-pink-500/30 w-64">
-          <div class="text-3xl font-bold text-pink-400">{{ analysisResult.overall }}%</div>
-          <div class="text-gray-300">Общий балл</div>
+
+        <!-- Общий балл - главная карточка -->
+        <div class="bg-gradient-to-r from-pink-600 to-violet-600 rounded-2xl p-6 mb-6 text-center shadow-lg hover:shadow-2xl hover:shadow-pink-500/30 transition-all duration-300 hover:scale-[1.02]">
+          <div class="text-5xl font-bold text-white mb-2">{{ analysisResult.overall }}%</div>
+          <div class="text-xl text-gray-100">Общий балл</div>
         </div>
-      </div>
+
+        <!-- Детальные оценки -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-4xl mx-auto">
+          <div class="bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-xl p-4 text-center border border-pink-500/30 hover:shadow-xl hover:shadow-pink-500/20 transition-all duration-300 hover:scale-105">
+            <div class="text-3xl font-bold text-pink-400">{{ analysisResult.spatial_similarity }}%</div>
+            <div class="text-gray-300 text-sm">Техника</div>
+          </div>
+          
+          <div class="bg-gradient-to-br from-violet-500/20 to-violet-600/20 rounded-xl p-4 text-center border border-violet-500/30 hover:shadow-xl hover:shadow-violet-500/20 transition-all duration-300 hover:scale-105">
+            <div class="text-3xl font-bold text-violet-400">{{ analysisResult.timing }}%</div>
+            <div class="text-gray-300 text-sm">Синхронизация</div>
+          </div>
+          
+          <div class="bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-xl p-4 text-center border border-pink-500/30 hover:shadow-xl hover:shadow-pink-500/20 transition-all duration-300 hover:scale-105">
+            <div class="text-3xl font-bold text-pink-400">{{ analysisResult.balance }}%</div>
+            <div class="text-gray-300 text-sm">Баланс</div>
+          </div>
+          
+          <div class="bg-gradient-to-br from-violet-500/20 to-violet-600/20 rounded-xl p-4 text-center border border-violet-500/30 hover:shadow-xl hover:shadow-violet-500/20 transition-all duration-300 hover:scale-105">
+            <div class="text-3xl font-bold text-violet-400">{{ analysisResult.classifier_clarity }}%</div>
+            <div class="text-gray-300 text-sm">Разборчивость</div>
+          </div>
+        </div>
+
+
 
         <!-- Feedback -->
         <div class="bg-gray-700/50 rounded-xl p-6">
@@ -196,6 +220,10 @@ onMounted(() => {
     const result = JSON.parse(data.metadata);
     analysisResult.value = {
       overall: Math.round(result.confidence * 100),
+      timing: Math.round(result.timing * 100),
+      balance: Math.round(result.balance * 100),
+      classifier_clarity: Math.round(result.classifier_clarity * 100),
+      spatial_similarity: Math.round(result.spatial_similarity * 100),
       feedback: [getFigure(result.figures)]
     };
 
@@ -285,7 +313,7 @@ const handleVideoUpload = (e) => {
   tmpVideo.src = url;
   tmpVideo.onloadedmetadata = () => {
     // Проверяем нужные параметры видео
-    if (tmpVideo.videoWidth !== 1920 || tmpVideo.videoHeight !== 1080) {
+    if (tmpVideo.videoWidth < 1920 || tmpVideo.videoHeight < 1080) {
       alert(`Видео не соответствует требуемому разрешению 1920x1080. Загружено: ${tmpVideo.videoWidth}x${tmpVideo.videoHeight}`);
       URL.revokeObjectURL(url);
       return;
