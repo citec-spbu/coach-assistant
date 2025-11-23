@@ -1,0 +1,24 @@
+{
+  "sequence_length": 50,
+  "num_features": 50,
+  "num_classes": 14,
+  "classes": [
+    "Aida",
+    "Alemana",
+    "Fan",
+    "FootChange",
+    "HandToHandL",
+    "HandToHandR",
+    "HockyStick",
+    "NaturalTop",
+    "NewYorkL",
+    "NewYorkR",
+    "NotPerforming",
+    "OpenBasic",
+    "OpeningOut",
+    "SpotTurn"
+  ],
+  "train_size": 28722,
+  "val_size": 6136,
+  "test_size": 6152
+}
