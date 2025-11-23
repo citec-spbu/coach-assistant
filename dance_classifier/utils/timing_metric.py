@@ -38,13 +38,95 @@ def _load_audio_and_beats(
         bpm, beat_times (сек).
     """
     import librosa
+    import subprocess
+    import shutil
+    import tempfile
+    import os
 
     audio_path = Path(audio_path).resolve()
     if not audio_path.exists():
         raise FileNotFoundError(f"Файл аудио/видео не найден: {audio_path}")
 
-    # librosa умеет читать и mp4, если установлен ffmpeg/audioread
-    y, sr = librosa.load(str(audio_path), sr=None, mono=True)
+    # Пробуем загрузить напрямую через librosa
+    try:
+        y, sr = librosa.load(str(audio_path), sr=None, mono=True)
+    except Exception as e:
+        # Если не получилось (проблема с audioread/ffmpeg), извлекаем аудио через subprocess
+        ffmpeg_path = shutil.which('ffmpeg')
+        if not ffmpeg_path:
+            raise RuntimeError(
+                "ffmpeg не найден в PATH. "
+                "Установите ffmpeg и перезапустите терминал."
+            ) from e
+        
+        # Извлекаем аудио во временный файл
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+            tmp_audio_path = tmp_file.name
+        
+        try:
+            # Сначала проверяем, есть ли аудио в видео
+            probe_cmd = [
+                ffmpeg_path,
+                '-i', str(audio_path),
+                '-show_streams',
+                '-select_streams', 'a',  # только аудио потоки
+                '-loglevel', 'error'
+            ]
+            
+            probe_result = subprocess.run(
+                probe_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            # Если нет аудио потоков, возвращаем ошибку
+            if 'codec_type=audio' not in probe_result.stdout:
+                raise RuntimeError(
+                    "В видео файле нет аудио потока. "
+                    "Метрика Timing не может быть вычислена."
+                ) from e
+            
+            # Извлекаем аудио из видео через ffmpeg
+            cmd = [
+                ffmpeg_path,
+                '-i', str(audio_path),
+                '-vn',  # без видео
+                '-acodec', 'pcm_s16le',  # PCM 16-bit
+                '-ar', '22050',  # частота дискретизации
+                '-ac', '1',  # моно
+                '-y',  # перезаписать выходной файл
+                tmp_audio_path
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode != 0:
+                # Проверяем, может быть в видео просто нет аудио
+                if 'does not contain any stream' in result.stderr or 'no audio' in result.stderr.lower():
+                    raise RuntimeError(
+                        "В видео файле нет аудио потока. "
+                        "Метрика Timing не может быть вычислена."
+                    ) from e
+                raise RuntimeError(
+                    f"Ошибка извлечения аудио через ffmpeg: {result.stderr}"
+                ) from e
+            
+            # Загружаем извлеченное аудио
+            y, sr = librosa.load(tmp_audio_path, sr=None, mono=True)
+        finally:
+            # Удаляем временный файл
+            if os.path.exists(tmp_audio_path):
+                try:
+                    os.unlink(tmp_audio_path)
+                except:
+                    pass
+    
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 

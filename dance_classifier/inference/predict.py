@@ -266,7 +266,21 @@ class DanceClassifierPredictor:
         if len(poses_data["frames"]) < self.sequence_length:
             return {
                 'success': False,
-                'error': f'Not enough frames: {len(poses_data["frames"])} < {self.sequence_length}'
+                'predicted_class': 'Unknown',
+                'predicted_figure': 'Unknown',  # Для совместимости с фронтендом
+                'confidence': 0.0,
+                'classification': {  # Старый формат для совместимости
+                    'figure': 'Unknown',
+                    'confidence': 0.0
+                },
+                'error': f'Not enough frames: {len(poses_data["frames"])} < {self.sequence_length}',
+                'scores': {
+                    'technique': {'score': 0.0, 'error': 'Not enough frames'},
+                    'timing': {'score': 0.0, 'error': 'Not enough frames'},
+                    'balance': {'score': 0.0, 'error': 'Not enough frames'},
+                    'dynamics': {'score': 0.0, 'error': 'Not enough frames'},
+                    'posture': {'score': 0.0, 'error': 'Not enough frames'}
+                }
             }
         
         # Извлекаем признаки через FeatureExtractor
@@ -303,7 +317,21 @@ class DanceClassifierPredictor:
                 else:
                     return {
                         'success': False,
-                        'error': f'Not enough frames: {len(feature_array)} < {self.sequence_length}'
+                        'predicted_class': 'Unknown',
+                        'predicted_figure': 'Unknown',  # Для совместимости с фронтендом
+                        'confidence': 0.0,
+                        'classification': {  # Старый формат для совместимости
+                            'figure': 'Unknown',
+                            'confidence': 0.0
+                        },
+                        'error': f'Not enough frames: {len(feature_array)} < {self.sequence_length}',
+                        'scores': {
+                            'technique': {'score': 0.0, 'error': 'Not enough frames'},
+                            'timing': {'score': 0.0, 'error': 'Not enough frames'},
+                            'balance': {'score': 0.0, 'error': 'Not enough frames'},
+                            'dynamics': {'score': 0.0, 'error': 'Not enough frames'},
+                            'posture': {'score': 0.0, 'error': 'Not enough frames'}
+                        }
                     }
             
             # Берём последнюю последовательность
@@ -325,7 +353,12 @@ class DanceClassifierPredictor:
             result = {
                 'success': True,
                 'predicted_class': predicted_class,
+                'predicted_figure': predicted_class,  # Для совместимости с фронтендом
                 'confidence': float(probabilities[np.argmax(probabilities)]),
+                'classification': {  # Старый формат для совместимости
+                    'figure': predicted_class,
+                    'confidence': float(probabilities[np.argmax(probabilities)])
+                },
                 'probabilities': {
                     self.label_encoder.classes_[i]: float(prob)
                     for i, prob in enumerate(probabilities)
@@ -337,7 +370,8 @@ class DanceClassifierPredictor:
                 try:
                     # 1. Spatial Similarity (техника с DTW)
                     spatial_info = self._compute_spatial_similarity(
-                        sequence, predicted_class, feature_array, self.sequence_length
+                        sequence, predicted_class, feature_array, self.sequence_length,
+                        probabilities=result['probabilities']
                     )
                     if spatial_info:
                         result['spatial_similarity'] = spatial_info
@@ -363,9 +397,85 @@ class DanceClassifierPredictor:
                     )
                     if balance_info:
                         result['balance'] = balance_info
+                    
+                    # Добавляем scores для обратной совместимости с фронтендом
+                    scores = {}
+                    
+                    # Technique (Spatial Similarity)
+                    if 'spatial_similarity' in result and isinstance(result['spatial_similarity'], dict):
+                        if 'error' not in result['spatial_similarity']:
+                            scores['technique'] = {'score': result['spatial_similarity'].get('score', 0.0)}
+                            if 'note' in result['spatial_similarity']:
+                                scores['technique']['note'] = result['spatial_similarity']['note']
+                        else:
+                            scores['technique'] = {'score': 0.0, 'error': result['spatial_similarity'].get('error')}
+                    else:
+                        scores['technique'] = {'score': 0.0}
+                    
+                    # Timing
+                    if 'timing' in result and isinstance(result['timing'], dict):
+                        if 'error' in result['timing']:
+                            scores['timing'] = {'score': 0.0, 'error': result['timing'].get('error')}
+                        else:
+                            scores['timing'] = {'score': result['timing'].get('score', 0.0)}
+                    else:
+                        scores['timing'] = {'score': 0.0}
+                    
+                    # Balance
+                    if 'balance' in result and isinstance(result['balance'], dict):
+                        if 'error' in result['balance']:
+                            scores['balance'] = {'score': 0.0, 'error': result['balance'].get('error')}
+                        else:
+                            scores['balance'] = {'score': result['balance'].get('score', 0.0)}
+                    else:
+                        scores['balance'] = {'score': 0.0}
+                    
+                    # Dynamics (Classifier Clarity)
+                    if 'classifier_clarity' in result and isinstance(result['classifier_clarity'], dict):
+                        if 'error' not in result['classifier_clarity']:
+                            scores['dynamics'] = {'score': result['classifier_clarity'].get('score', 0.0)}
+                        else:
+                            scores['dynamics'] = {'score': 0.0, 'error': result['classifier_clarity'].get('error')}
+                    else:
+                        scores['dynamics'] = {'score': 0.0}
+                    
+                    # Posture (используем Balance)
+                    scores['posture'] = {'score': scores['balance']['score']}
+                    
+                    result['scores'] = scores
                 
                 except Exception as e:
+                    # Даже при ошибке метрик, добавляем scores с ошибками
                     result['metrics_error'] = f"Metrics computation failed: {str(e)}"
+                    # Убеждаемся, что scores всегда присутствует
+                    if 'scores' not in result:
+                        result['scores'] = {
+                            'technique': {'score': 0.0, 'error': 'Metrics computation failed'},
+                            'timing': {'score': 0.0, 'error': 'Metrics computation failed'},
+                            'balance': {'score': 0.0, 'error': 'Metrics computation failed'},
+                            'dynamics': {'score': 0.0, 'error': 'Metrics computation failed'},
+                            'posture': {'score': 0.0, 'error': 'Metrics computation failed'}
+                        }
+            else:
+                # Если метрики не вычисляются, все равно добавляем scores
+                result['scores'] = {
+                    'technique': {'score': 0.0, 'error': 'Metrics not computed'},
+                    'timing': {'score': 0.0, 'error': 'Metrics not computed'},
+                    'balance': {'score': 0.0, 'error': 'Metrics not computed'},
+                    'dynamics': {'score': 0.0, 'error': 'Metrics not computed'},
+                    'posture': {'score': 0.0, 'error': 'Metrics not computed'}
+                }
+            
+            # Убеждаемся, что predicted_figure всегда присутствует
+            if 'predicted_figure' not in result:
+                result['predicted_figure'] = result.get('predicted_class', 'Unknown')
+            
+            # Убеждаемся, что classification всегда присутствует
+            if 'classification' not in result:
+                result['classification'] = {
+                    'figure': result.get('predicted_class', 'Unknown'),
+                    'confidence': result.get('confidence', 0.0)
+                }
             
             print("4")
             return result
@@ -375,7 +485,21 @@ class DanceClassifierPredictor:
             print(f"ERROR: {error_msg}")
             return {
                 'success': False,
-                'error': error_msg
+                'predicted_class': 'Unknown',
+                'predicted_figure': 'Unknown',  # Для совместимости с фронтендом
+                'confidence': 0.0,
+                'classification': {  # Старый формат для совместимости
+                    'figure': 'Unknown',
+                    'confidence': 0.0
+                },
+                'error': error_msg,
+                'scores': {
+                    'technique': {'score': 0.0, 'error': 'Feature extraction failed'},
+                    'timing': {'score': 0.0, 'error': 'Feature extraction failed'},
+                    'balance': {'score': 0.0, 'error': 'Feature extraction failed'},
+                    'dynamics': {'score': 0.0, 'error': 'Feature extraction failed'},
+                    'posture': {'score': 0.0, 'error': 'Feature extraction failed'}
+                }
             }
     
     def _compute_spatial_similarity(
@@ -383,16 +507,19 @@ class DanceClassifierPredictor:
         sequence: np.ndarray,
         predicted_class: str,
         all_poses: np.ndarray,
-        seq_len: int
+        seq_len: int,
+        probabilities: Optional[Dict[str, float]] = None
     ) -> Optional[Dict]:
         """Вычисляет DTW-сходство с эталоном"""
         try:
             from ..utils.spatial_similarity import compute_spatial_similarity
             
-            # Проверяем наличие эталона
+            # Проверяем наличие эталона для предсказанного класса
             ref_path = self.reference_dir / f"{predicted_class}.npy"
+            
+            # Если нет эталона для предсказанного класса, возвращаем нейтральное значение
+            # НЕ используем альтернативные эталоны - они не подходят для других фигур
             if not ref_path.exists():
-                # Если нет эталона, возвращаем нейтральное значение
                 return {
                     "score": 50.0,
                     "mean_distance": None,
@@ -418,7 +545,8 @@ class DanceClassifierPredictor:
             return {
                 "score": float(result.score),
                 "mean_distance": float(result.mean_distance),
-                "error_segments": result.error_segments
+                "reference_figure": predicted_class,
+                "error_segments": result.error_segments if hasattr(result, 'error_segments') else []
             }
         except Exception as e:
             return {"error": str(e)}
@@ -549,9 +677,42 @@ class DanceClassifierPredictor:
                 for line in f:
                     pose = json.loads(line)
                     keypoints = pose.get('keypoints', [])
-                    if keypoints:
+                    if keypoints and len(keypoints) >= 17:
+                        # Преобразуем YOLO keypoints (17 точек) в формат для balance_metric (29 точек Mediapipe)
+                        # YOLO COCO порядок: 0=nose, 1-4=eyes/ears, 5-6=shoulders, 7-8=elbows,
+                        # 9-10=wrists, 11-12=hips, 13-14=knees, 15-16=ankles
+                        # Создаем массив из 29 элементов, заполняя нужные позиции для balance_metric
+                        full_landmarks = [None] * 29
+                        
+                        # Маппинг YOLO -> Mediapipe для точек, нужных balance_metric:
+                        # Mediapipe: 11=left_shoulder, 12=right_shoulder, 23=left_hip, 24=right_hip, 27=left_ankle, 28=right_ankle
+                        # YOLO: 5=left_shoulder, 6=right_shoulder, 11=left_hip, 12=right_hip, 15=left_ankle, 16=right_ankle
+                        mapping = {
+                            5: 11,   # left_shoulder
+                            6: 12,   # right_shoulder
+                            11: 23,  # left_hip
+                            12: 24,  # right_hip
+                            15: 27,  # left_ankle
+                            16: 28   # right_ankle
+                        }
+                        
+                        for yolo_idx, mediapipe_idx in mapping.items():
+                            if yolo_idx < len(keypoints):
+                                kp = keypoints[yolo_idx]
+                                if len(kp) >= 2:
+                                    full_landmarks[mediapipe_idx] = {
+                                        'x': float(kp[0]),
+                                        'y': float(kp[1]),
+                                        'z': 0.0
+                                    }
+                        
+                        # Заполняем остальные позиции нулевыми значениями (balance_metric использует только указанные выше точки)
+                        for i in range(29):
+                            if full_landmarks[i] is None:
+                                full_landmarks[i] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+                        
                         poses_data["frames"].append({
-                            "pose_landmarks": [keypoints[i] for i in range(len(keypoints)) if i < len(keypoints)]
+                            "pose_landmarks": full_landmarks
                         })
                 poses_data["fps"] = 25.0
             
@@ -581,6 +742,7 @@ class DanceClassifierPredictor:
 def main():
     """Пример использования"""
     import sys
+    from pathlib import Path
     
     if len(sys.argv) < 2:
         print("Использование: python predict.py путь/к/poses.jsonl [путь/к/видео.mp4]")
@@ -589,8 +751,27 @@ def main():
     poses_path = sys.argv[1]
     video_path = sys.argv[2] if len(sys.argv) > 2 else None
     
+    # Определяем пути относительно текущего файла
+    current_file = Path(__file__)
+    dance_classifier_root = current_file.parent.parent
+    # Модель может быть в основной папке coach-assistant
+    main_coach_dir = Path(r"C:\Users\1\!PYTHON_DZ\coach-assistant\dance_classifier")
+    if (main_coach_dir / "best_model_20pct_adapted.pth").exists():
+        model_path = main_coach_dir / "best_model_20pct_adapted.pth"
+    elif (main_coach_dir / "best_model_20pct.pth").exists():
+        model_path = main_coach_dir / "best_model_20pct.pth"
+    else:
+        model_path = dance_classifier_root / "best_model_20pct_adapted.pth"
+    metadata_path = dance_classifier_root / "dataset" / "metadata.json"
+    scaler_path = dance_classifier_root / "dataset" / "scaler.pkl"
+    label_encoder_path = dance_classifier_root / "dataset" / "label_encoder.pkl"
+    
     predictor = DanceClassifierPredictor(
-        model_path="best_model_20pct_adapted.pth"
+        model_path=str(model_path),
+        metadata_path=str(metadata_path),
+        scaler_path=str(scaler_path),
+        label_encoder_path=str(label_encoder_path),
+        device='cpu'
     )
     
     result = predictor.predict_from_poses(poses_path, video_path)
@@ -605,8 +786,18 @@ def main():
         if 'classifier_clarity' in result and 'score' in result['classifier_clarity']:
             print(f"Clarity: {result['classifier_clarity']['score']:.1f}/100")
         
-        if 'timing' in result and 'score' in result['timing']:
-            print(f"Timing: {result['timing']['score']:.1f}/100")
+        if 'timing' in result:
+            if isinstance(result['timing'], dict):
+                if 'error' in result['timing']:
+                    error_msg = result['timing']['error']
+                    if 'нет аудио потока' in error_msg or 'no audio' in error_msg.lower():
+                        print(f"Timing (Тайминг): не вычислена (нет аудио потока в видео)")
+                    else:
+                        print(f"Timing (Тайминг): не вычислена ({error_msg})")
+                elif 'score' in result['timing']:
+                    print(f"Timing: {result['timing']['score']:.1f}/100")
+            else:
+                print(f"Timing: {result['timing']:.1f}/100")
         
         if 'balance' in result and 'score' in result['balance']:
             print(f"Balance: {result['balance']['score']:.1f}/100")
