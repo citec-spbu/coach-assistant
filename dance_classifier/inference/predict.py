@@ -93,16 +93,25 @@ class DanceClassifierPredictor:
         # Загружаем модель
         checkpoint = torch.load(model_path, weights_only=False, map_location=self.device)
         
-        # Загружаем scaler и label_encoder из отдельных файлов
-        with open(scaler_path, 'rb') as f:
-            self.scaler = pickle.load(f)
-        
-        with open(label_encoder_path, 'rb') as f:
-            self.label_encoder = pickle.load(f)
-        
-        # Загружаем metadata
-        with open(metadata_path, 'r', encoding='utf-8') as f:
-            self.metadata = json.load(f)
+        # Проверяем, есть ли scaler и label_encoder в checkpoint
+        if 'scaler' in checkpoint and 'label_encoder' in checkpoint:
+            # Используем из checkpoint (предпочтительно, так как версии совпадают)
+            self.scaler = checkpoint['scaler']
+            self.label_encoder = checkpoint['label_encoder']
+            self.metadata = checkpoint.get('metadata', {})
+            print("Используются scaler и label_encoder из checkpoint модели")
+        else:
+            # Загружаем из отдельных файлов (fallback)
+            with open(scaler_path, 'rb') as f:
+                self.scaler = pickle.load(f)
+            
+            with open(label_encoder_path, 'rb') as f:
+                self.label_encoder = pickle.load(f)
+            
+            # Загружаем metadata
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                self.metadata = json.load(f)
+            print("Используются scaler и label_encoder из отдельных файлов")
         
         self.sequence_length = self.metadata.get('sequence_length', 30)
         
@@ -460,9 +469,11 @@ class DanceClassifierPredictor:
                 poses_data = {"frames": []}
                 for line in f:
                     pose = json.loads(line)
-                    poses_data["frames"].append({
-                        "pose_landmarks": [pose['keypoints'][i] for i in range(len(pose['keypoints']))]
-                    })
+                    keypoints = pose.get('keypoints', [])
+                    if keypoints:
+                        poses_data["frames"].append({
+                            "pose_landmarks": [keypoints[i] for i in range(len(keypoints)) if i < len(keypoints)]
+                        })
                 poses_data["fps"] = 25.0  # предполагаем
             
             video_path = Path(video_path)
@@ -501,9 +512,11 @@ class DanceClassifierPredictor:
                 poses_data = {"frames": []}
                 for line in f:
                     pose = json.loads(line)
-                    poses_data["frames"].append({
-                        "pose_landmarks": [pose['keypoints'][i] for i in range(len(pose['keypoints']))]
-                    })
+                    keypoints = pose.get('keypoints', [])
+                    if keypoints:
+                        poses_data["frames"].append({
+                            "pose_landmarks": [keypoints[i] for i in range(len(keypoints)) if i < len(keypoints)]
+                        })
                 poses_data["fps"] = 25.0
             
             # Индексы кадров последовательности
