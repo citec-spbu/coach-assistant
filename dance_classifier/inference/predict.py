@@ -404,7 +404,9 @@ class DanceClassifierPredictor:
                     # Technique (Spatial Similarity)
                     if 'spatial_similarity' in result and isinstance(result['spatial_similarity'], dict):
                         if 'error' not in result['spatial_similarity']:
-                            scores['technique'] = {'score': result['spatial_similarity'].get('score', 0.0)}
+                            tech_score = result['spatial_similarity'].get('score', 0.0)
+                            tech_score = float(tech_score) if tech_score is not None and not (isinstance(tech_score, float) and np.isnan(tech_score)) else 0.0
+                            scores['technique'] = {'score': tech_score}
                             if 'note' in result['spatial_similarity']:
                                 scores['technique']['note'] = result['spatial_similarity']['note']
                         else:
@@ -417,7 +419,9 @@ class DanceClassifierPredictor:
                         if 'error' in result['timing']:
                             scores['timing'] = {'score': 0.0, 'error': result['timing'].get('error')}
                         else:
-                            scores['timing'] = {'score': result['timing'].get('score', 0.0)}
+                            timing_score = result['timing'].get('score', 0.0)
+                            timing_score = float(timing_score) if timing_score is not None and not (isinstance(timing_score, float) and np.isnan(timing_score)) else 0.0
+                            scores['timing'] = {'score': timing_score}
                     else:
                         scores['timing'] = {'score': 0.0}
                     
@@ -426,21 +430,27 @@ class DanceClassifierPredictor:
                         if 'error' in result['balance']:
                             scores['balance'] = {'score': 0.0, 'error': result['balance'].get('error')}
                         else:
-                            scores['balance'] = {'score': result['balance'].get('score', 0.0)}
+                            balance_score = result['balance'].get('score', 0.0)
+                            balance_score = float(balance_score) if balance_score is not None and not (isinstance(balance_score, float) and np.isnan(balance_score)) else 0.0
+                            scores['balance'] = {'score': balance_score}
                     else:
                         scores['balance'] = {'score': 0.0}
                     
                     # Dynamics (Classifier Clarity)
                     if 'classifier_clarity' in result and isinstance(result['classifier_clarity'], dict):
                         if 'error' not in result['classifier_clarity']:
-                            scores['dynamics'] = {'score': result['classifier_clarity'].get('score', 0.0)}
+                            dynamics_score = result['classifier_clarity'].get('score', 0.0)
+                            dynamics_score = float(dynamics_score) if dynamics_score is not None and not (isinstance(dynamics_score, float) and np.isnan(dynamics_score)) else 0.0
+                            scores['dynamics'] = {'score': dynamics_score}
                         else:
                             scores['dynamics'] = {'score': 0.0, 'error': result['classifier_clarity'].get('error')}
                     else:
                         scores['dynamics'] = {'score': 0.0}
                     
                     # Posture (используем Balance)
-                    scores['posture'] = {'score': scores['balance']['score']}
+                    posture_score = scores['balance'].get('score', 0.0)
+                    posture_score = float(posture_score) if posture_score is not None and not (isinstance(posture_score, float) and np.isnan(posture_score)) else 0.0
+                    scores['posture'] = {'score': posture_score}
                     
                     result['scores'] = scores
                 
@@ -475,6 +485,33 @@ class DanceClassifierPredictor:
                 result['classification'] = {
                     'figure': result.get('predicted_class', 'Unknown'),
                     'confidence': result.get('confidence', 0.0)
+                }
+            
+            # ФИНАЛЬНАЯ ПРОВЕРКА: гарантируем, что ВСЕ метрики имеют score
+            if 'scores' in result:
+                required_metrics = ['technique', 'timing', 'balance', 'dynamics', 'posture']
+                for metric in required_metrics:
+                    if metric not in result['scores']:
+                        result['scores'][metric] = {'score': 0.0}
+                    elif not isinstance(result['scores'][metric], dict):
+                        result['scores'][metric] = {'score': float(result['scores'][metric]) if isinstance(result['scores'][metric], (int, float)) else 0.0}
+                    elif 'score' not in result['scores'][metric]:
+                        result['scores'][metric]['score'] = 0.0
+                    else:
+                        # Убеждаемся, что score - это число, а не None
+                        score_value = result['scores'][metric]['score']
+                        if score_value is None or (isinstance(score_value, float) and np.isnan(score_value)):
+                            result['scores'][metric]['score'] = 0.0
+                        else:
+                            result['scores'][metric]['score'] = float(score_value)
+            else:
+                # Если scores вообще нет, создаем с нулями
+                result['scores'] = {
+                    'technique': {'score': 0.0},
+                    'timing': {'score': 0.0},
+                    'balance': {'score': 0.0},
+                    'dynamics': {'score': 0.0},
+                    'posture': {'score': 0.0}
                 }
             
             print("4")
