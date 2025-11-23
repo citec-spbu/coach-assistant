@@ -7,7 +7,9 @@
     predictor = DanceClassifierPredictor(
         model_path="best_model_20pct.pth",
         metadata_path="dataset/metadata.json",
-        scaler_path="dataset/scaler.pkl"
+        scaler_path="dataset/scaler.pkl",
+        label_encoder_path="dataset/label_encoder.pkl",
+        reference_dir=None  # Автоматически найдет в reference_trajectories/
     )
     
     result = predictor.predict_from_poses("poses.jsonl", video_path="video.mp4")
@@ -69,16 +71,21 @@ class DanceClassifierPredictor:
     def __init__(
         self,
         model_path: str,
+        metadata_path: str,
+        scaler_path: str,
+        label_encoder_path: str,
         reference_dir: Optional[str] = None,
-        videos_dir: Optional[str] = None,
-        device: Optional[str] = None
+        device: str = 'cuda'
     ):
         """
         Args:
             model_path: путь к .pth файлу с моделью
+            metadata_path: путь к metadata.json
+            scaler_path: путь к scaler.pkl
+            label_encoder_path: путь к label_encoder.pkl
             reference_dir: путь к директории с эталонами (.npy файлы)
-            videos_dir: путь к директории с видео (для тайминг-метрики)
-            device: устройство (cpu/cuda), по умолчанию auto
+                         Если None, автоматически найдет в reference_trajectories/
+            device: устройство (cpu/cuda), по умолчанию 'cuda'
         """
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         model_path = Path(model_path)
@@ -86,9 +93,17 @@ class DanceClassifierPredictor:
         # Загружаем модель
         checkpoint = torch.load(model_path, weights_only=False, map_location=self.device)
         
-        self.scaler = checkpoint['scaler']
-        self.label_encoder = checkpoint['label_encoder']
-        self.metadata = checkpoint.get('metadata', {})
+        # Загружаем scaler и label_encoder из отдельных файлов
+        with open(scaler_path, 'rb') as f:
+            self.scaler = pickle.load(f)
+        
+        with open(label_encoder_path, 'rb') as f:
+            self.label_encoder = pickle.load(f)
+        
+        # Загружаем metadata
+        with open(metadata_path, 'r', encoding='utf-8') as f:
+            self.metadata = json.load(f)
+        
         self.sequence_length = self.metadata.get('sequence_length', 30)
         
         # Создаём модель
@@ -108,6 +123,7 @@ class DanceClassifierPredictor:
         
         # Директории для метрик
         model_dir = model_path.parent
+        self.videos_dir = model_dir.parent  # По умолчанию родительская папка модели
         
         # По умолчанию ищем reference_trajectories в dance_classifier/
         if reference_dir:
@@ -120,8 +136,6 @@ class DanceClassifierPredictor:
             dance_classifier_root = current_file.parent.parent  # поднимаемся на 2 уровня
             default_ref_dir = dance_classifier_root / "reference_trajectories"
             self.reference_dir = default_ref_dir
-        
-        self.videos_dir = Path(videos_dir) if videos_dir else model_dir.parent
     
     def _interpolate_missing(self, sequence: np.ndarray) -> np.ndarray:
         """Заполняет пропущенные значения интерполяцией"""
