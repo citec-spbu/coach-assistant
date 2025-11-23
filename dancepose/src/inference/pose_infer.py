@@ -37,7 +37,7 @@ class PoseExtractor:
         kp_sc = kps_conf[idx]     # (J,)
         kp_xyc = np.concatenate([kp_xy, kp_sc[:, None]], axis=1)  # (J,3)
         return True, bbox, kp_xyc, float(kp_sc.mean())
-
         kp_sc = kps_conf[idx]     # (J,)
         kp_xyc = np.concatenate([kp_xy, kp_sc[:, None]], axis=1)  # (J,3)
         return True, bbox, kp_xyc, float(kp_sc.mean())
+

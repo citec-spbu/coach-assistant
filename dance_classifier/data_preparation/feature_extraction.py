@@ -1,703 +1,399 @@
 """
-Модуль извлечения признаков из поз для классификации танцевальных фигур
+Извлечение признаков из поз для классификации танцевальных движений
 """
+
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 
-# Индексы ключевых точек YOLO-Pose (COCO формат)
-# 0: нос, 1-2: глаза, 3-4: уши
-# 5-6: плечи, 7-8: локти, 9-10: запястья
-# 11-12: бедра, 13-14: колени, 15-16: лодыжки
-KEYPOINT_NAMES = [
-    'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
-    'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-    'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
-    'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
-]
-
-# Индексы для удобного доступа
-KP = {name: idx for idx, name in enumerate(KEYPOINT_NAMES)}
+def get_simple_features():
+    """Возвращает список базовых признаков для извлечения"""
+    features = []
+    
+    # Координаты ключевых точек (x, y)
+    keypoints = [
+        'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
+        'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+        'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
+        'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
+    ]
+    
+    for kp in keypoints:
+        features.append(f'{kp}_x')
+        features.append(f'{kp}_y')
+    
+    # Углы между суставами
+    features.extend([
+        'left_elbow_angle',
+        'right_elbow_angle',
+        'left_knee_angle',
+        'right_knee_angle',
+        'left_hip_angle',
+        'right_hip_angle',
+        'left_shoulder_angle',
+        'right_shoulder_angle'
+    ])
+    
+    # Расстояния
+    features.extend([
+        'shoulder_width',
+        'hip_width',
+        'torso_length',
+        'left_arm_length',
+        'right_arm_length',
+        'left_leg_length',
+        'right_leg_length',
+        'body_height',
+        'center_x',
+        'center_y'
+    ])
+    
+    return features[:53]  # Возвращаем 53 признака
 
 
 class FeatureExtractor:
     """Класс для извлечения признаков из поз"""
     
+    # Индексы ключевых точек Mediapipe Pose
+    KEYPOINT_INDICES = {
+        'nose': 0,
+        'left_eye_inner': 1,
+        'left_eye': 2,
+        'left_eye_outer': 3,
+        'right_eye_inner': 4,
+        'right_eye': 5,
+        'right_eye_outer': 6,
+        'left_ear': 7,
+        'right_ear': 8,
+        'mouth_left': 9,
+        'mouth_right': 10,
+        'left_shoulder': 11,
+        'right_shoulder': 12,
+        'left_elbow': 13,
+        'right_elbow': 14,
+        'left_wrist': 15,
+        'right_wrist': 16,
+        'left_pinky': 17,
+        'right_pinky': 18,
+        'left_index': 19,
+        'right_index': 20,
+        'left_thumb': 21,
+        'right_thumb': 22,
+        'left_hip': 23,
+        'right_hip': 24,
+        'left_knee': 25,
+        'right_knee': 26,
+        'left_ankle': 27,
+        'right_ankle': 28,
+        'left_heel': 29,
+        'right_heel': 30,
+        'left_foot_index': 31,
+        'right_foot_index': 32
+    }
+    
     def __init__(self, min_confidence=0.3):
         """
         Args:
-            min_confidence: минимальная уверенность для использования ключевой точки
+            min_confidence: минимальная уверенность для учета ключевой точки
         """
         self.min_confidence = min_confidence
     
-    def compute_angle(self, p1, p2, p3):
+    def extract_sequence_features(self, poses_data: Dict) -> Tuple[List[Dict], np.ndarray]:
         """
-        Вычисляет угол между тремя точками (p2 - вершина угла)
+        Извлекает признаки из последовательности поз
         
         Args:
-            p1, p2, p3: точки в формате [x, y, confidence]
+            poses_data: словарь с данными поз (формат из extract_poses.py)
         
         Returns:
-            float: угол в градусах или None если точки невалидны
+            feature_list: список словарей с признаками для каждого кадра
+            valid_mask: маска валидных кадров
         """
-        # Проверяем уверенность
-        if (p1[2] < self.min_confidence or 
-            p2[2] < self.min_confidence or 
-            p3[2] < self.min_confidence):
-            return None
+        frames = poses_data.get('frames', [])
+        feature_list = []
+        valid_mask = []
+        
+        for frame in frames:
+            features = self._extract_frame_features(frame)
+            feature_list.append(features)
+            
+            # Кадр валиден, если есть хотя бы основные точки
+            is_valid = self._is_frame_valid(features)
+            valid_mask.append(is_valid)
+        
+        return feature_list, np.array(valid_mask, dtype=bool)
+    
+    def _extract_frame_features(self, frame: Dict) -> Dict:
+        """Извлекает признаки из одного кадра"""
+        features = {}
+        
+        # Получаем landmarks
+        landmarks = frame.get('pose_world_landmarks') or frame.get('pose_landmarks')
+        
+        if landmarks is None or len(landmarks) < 33:
+            return features
+        
+        # Извлекаем координаты ключевых точек
+        keypoints = {}
+        for name, idx in self.KEYPOINT_INDICES.items():
+            if idx < len(landmarks):
+                lm = landmarks[idx]
+                if isinstance(lm, dict):
+                    x = lm.get('x', np.nan)
+                    y = lm.get('y', np.nan)
+                    z = lm.get('z', np.nan)
+                    visibility = lm.get('visibility', 1.0)
+                elif isinstance(lm, (list, tuple)) and len(lm) >= 3:
+                    x, y, z = lm[0], lm[1], lm[2]
+                    visibility = lm[3] if len(lm) > 3 else 1.0
+                else:
+                    x, y, z = np.nan, np.nan, np.nan
+                    visibility = 0.0
+                
+                if visibility < self.min_confidence:
+                    x, y, z = np.nan, np.nan, np.nan
+                
+                keypoints[name] = {'x': x, 'y': y, 'z': z}
+                features[f'{name}_x'] = x
+                features[f'{name}_y'] = y
+        
+        # Вычисляем углы
+        features.update(self._calculate_angles(keypoints))
+        
+        # Вычисляем расстояния
+        features.update(self._calculate_distances(keypoints))
+        
+        return features
+    
+    def _calculate_angles(self, keypoints: Dict) -> Dict:
+        """Вычисляет углы между суставами"""
+        angles = {}
+        
+        # Угол левого локтя
+        if all(k in keypoints for k in ['left_shoulder', 'left_elbow', 'left_wrist']):
+            angles['left_elbow_angle'] = self._angle_between_points(
+                keypoints['left_shoulder'],
+                keypoints['left_elbow'],
+                keypoints['left_wrist']
+            )
+        
+        # Угол правого локтя
+        if all(k in keypoints for k in ['right_shoulder', 'right_elbow', 'right_wrist']):
+            angles['right_elbow_angle'] = self._angle_between_points(
+                keypoints['right_shoulder'],
+                keypoints['right_elbow'],
+                keypoints['right_wrist']
+            )
+        
+        # Угол левого колена
+        if all(k in keypoints for k in ['left_hip', 'left_knee', 'left_ankle']):
+            angles['left_knee_angle'] = self._angle_between_points(
+                keypoints['left_hip'],
+                keypoints['left_knee'],
+                keypoints['left_ankle']
+            )
+        
+        # Угол правого колена
+        if all(k in keypoints for k in ['right_hip', 'right_knee', 'right_ankle']):
+            angles['right_knee_angle'] = self._angle_between_points(
+                keypoints['right_hip'],
+                keypoints['right_knee'],
+                keypoints['right_ankle']
+            )
+        
+        # Углы бедер
+        if all(k in keypoints for k in ['left_shoulder', 'left_hip', 'left_knee']):
+            angles['left_hip_angle'] = self._angle_between_points(
+                keypoints['left_shoulder'],
+                keypoints['left_hip'],
+                keypoints['left_knee']
+            )
+        
+        if all(k in keypoints for k in ['right_shoulder', 'right_hip', 'right_knee']):
+            angles['right_hip_angle'] = self._angle_between_points(
+                keypoints['right_shoulder'],
+                keypoints['right_hip'],
+                keypoints['right_knee']
+            )
+        
+        # Углы плеч
+        if all(k in keypoints for k in ['left_hip', 'left_shoulder', 'left_elbow']):
+            angles['left_shoulder_angle'] = self._angle_between_points(
+                keypoints['left_hip'],
+                keypoints['left_shoulder'],
+                keypoints['left_elbow']
+            )
+        
+        if all(k in keypoints for k in ['right_hip', 'right_shoulder', 'right_elbow']):
+            angles['right_shoulder_angle'] = self._angle_between_points(
+                keypoints['right_hip'],
+                keypoints['right_shoulder'],
+                keypoints['right_elbow']
+            )
+        
+        return angles
+    
+    def _calculate_distances(self, keypoints: Dict) -> Dict:
+        """Вычисляет расстояния между ключевыми точками"""
+        distances = {}
+        
+        # Ширина плеч
+        if 'left_shoulder' in keypoints and 'right_shoulder' in keypoints:
+            distances['shoulder_width'] = self._distance(
+                keypoints['left_shoulder'],
+                keypoints['right_shoulder']
+            )
+        
+        # Ширина бедер
+        if 'left_hip' in keypoints and 'right_hip' in keypoints:
+            distances['hip_width'] = self._distance(
+                keypoints['left_hip'],
+                keypoints['right_hip']
+            )
+        
+        # Длина торса
+        if 'left_shoulder' in keypoints and 'left_hip' in keypoints:
+            distances['torso_length'] = self._distance(
+                keypoints['left_shoulder'],
+                keypoints['left_hip']
+            )
+        
+        # Длина левой руки
+        if all(k in keypoints for k in ['left_shoulder', 'left_elbow', 'left_wrist']):
+            d1 = self._distance(keypoints['left_shoulder'], keypoints['left_elbow'])
+            d2 = self._distance(keypoints['left_elbow'], keypoints['left_wrist'])
+            distances['left_arm_length'] = d1 + d2
+        
+        # Длина правой руки
+        if all(k in keypoints for k in ['right_shoulder', 'right_elbow', 'right_wrist']):
+            d1 = self._distance(keypoints['right_shoulder'], keypoints['right_elbow'])
+            d2 = self._distance(keypoints['right_elbow'], keypoints['right_wrist'])
+            distances['right_arm_length'] = d1 + d2
+        
+        # Длина левой ноги
+        if all(k in keypoints for k in ['left_hip', 'left_knee', 'left_ankle']):
+            d1 = self._distance(keypoints['left_hip'], keypoints['left_knee'])
+            d2 = self._distance(keypoints['left_knee'], keypoints['left_ankle'])
+            distances['left_leg_length'] = d1 + d2
+        
+        # Длина правой ноги
+        if all(k in keypoints for k in ['right_hip', 'right_knee', 'right_ankle']):
+            d1 = self._distance(keypoints['right_hip'], keypoints['right_knee'])
+            d2 = self._distance(keypoints['right_knee'], keypoints['right_ankle'])
+            distances['right_leg_length'] = d1 + d2
+        
+        # Высота тела (от ankles до nose)
+        if 'nose' in keypoints and 'left_ankle' in keypoints and 'right_ankle' in keypoints:
+            ankle_y = (keypoints['left_ankle'].get('y', 0) + keypoints['right_ankle'].get('y', 0)) / 2
+            nose_y = keypoints['nose'].get('y', 0)
+            if not np.isnan(ankle_y) and not np.isnan(nose_y):
+                distances['body_height'] = abs(nose_y - ankle_y)
+        
+        # Центр тела (среднее между плечами и бедрами)
+        if all(k in keypoints for k in ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']):
+            center_x = (
+                keypoints['left_shoulder'].get('x', 0) + 
+                keypoints['right_shoulder'].get('x', 0) +
+                keypoints['left_hip'].get('x', 0) +
+                keypoints['right_hip'].get('x', 0)
+            ) / 4
+            center_y = (
+                keypoints['left_shoulder'].get('y', 0) + 
+                keypoints['right_shoulder'].get('y', 0) +
+                keypoints['left_hip'].get('y', 0) +
+                keypoints['right_hip'].get('y', 0)
+            ) / 4
+            distances['center_x'] = center_x
+            distances['center_y'] = center_y
+        
+        return distances
+    
+    def _angle_between_points(self, p1: Dict, p2: Dict, p3: Dict) -> float:
+        """Вычисляет угол между тремя точками (p2 - вершина)"""
+        x1, y1 = p1.get('x', np.nan), p1.get('y', np.nan)
+        x2, y2 = p2.get('x', np.nan), p2.get('y', np.nan)
+        x3, y3 = p3.get('x', np.nan), p3.get('y', np.nan)
+        
+        if any(np.isnan([x1, y1, x2, y2, x3, y3])):
+            return np.nan
         
         # Векторы
-        v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
-        v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+        v1 = np.array([x1 - x2, y1 - y2])
+        v2 = np.array([x3 - x2, y3 - y2])
         
-        # Вычисляем угол
+        # Угол
         cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         angle = np.arccos(cos_angle)
         
         return np.degrees(angle)
     
-    def compute_distance(self, p1, p2, normalize=True, height=1.0):
-        """
-        Вычисляет расстояние между двумя точками
+    def _distance(self, p1: Dict, p2: Dict) -> float:
+        """Вычисляет евклидово расстояние между двумя точками"""
+        x1, y1 = p1.get('x', np.nan), p1.get('y', np.nan)
+        x2, y2 = p2.get('x', np.nan), p2.get('y', np.nan)
         
-        Args:
-            p1, p2: точки в формате [x, y, confidence]
-            normalize: нормализовать по высоте человека
-            height: высота для нормализации
+        if any(np.isnan([x1, y1, x2, y2])):
+            return np.nan
         
-        Returns:
-            float: расстояние или None если точки невалидны
-        """
-        if p1[2] < self.min_confidence or p2[2] < self.min_confidence:
-            return None
-        
-        dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-        
-        if normalize and height > 0:
-            dist = dist / height
-        
-        return dist
+        return np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     
-    def compute_velocity(self, p1_curr, p1_prev, fps=25.0):
-        """
-        Вычисляет скорость движения точки между кадрами
+    def _is_frame_valid(self, features: Dict) -> bool:
+        """Проверяет, валиден ли кадр (есть ли основные точки)"""
+        required_features = [
+            'left_shoulder_x', 'left_shoulder_y',
+            'right_shoulder_x', 'right_shoulder_y',
+            'left_hip_x', 'left_hip_y',
+            'right_hip_x', 'right_hip_y'
+        ]
         
-        Args:
-            p1_curr: текущая позиция [x, y, confidence]
-            p1_prev: предыдущая позиция [x, y, confidence]
-            fps: частота кадров
+        for feat in required_features:
+            if feat not in features or np.isnan(features[feat]):
+                return False
         
-        Returns:
-            float: скорость (пикселей/сек) или None если точки невалидны
-        """
-        if (p1_curr[2] < self.min_confidence or 
-            p1_prev[2] < self.min_confidence):
-            return None
-        
-        dx = p1_curr[0] - p1_prev[0]
-        dy = p1_curr[1] - p1_prev[1]
-        dist = np.sqrt(dx**2 + dy**2)
-        
-        velocity = dist * fps
-        return velocity
+        return True
     
-    def estimate_person_height(self, keypoints):
+    def features_to_array(self, feature_list: List[Dict], feature_names: List[str]) -> Tuple[np.ndarray, List[str], List[int]]:
         """
-        Оценивает высоту человека для нормализации
-        
-        Args:
-            keypoints: массив ключевых точек [[x, y, conf], ...]
-        
-        Returns:
-            float: оценка высоты
-        """
-        if len(keypoints) < 17:
-            return 1.0
-        
-        # Используем расстояние от носа до лодыжки
-        nose = keypoints[KP['nose']]
-        left_ankle = keypoints[KP['left_ankle']]
-        right_ankle = keypoints[KP['right_ankle']]
-        
-        # Выбираем более уверенную лодыжку
-        ankle = left_ankle if left_ankle[2] > right_ankle[2] else right_ankle
-        
-        if nose[2] < self.min_confidence or ankle[2] < self.min_confidence:
-            # Альтернативная оценка: от плеча до лодыжки
-            shoulder = keypoints[KP['left_shoulder']]
-            if shoulder[2] >= self.min_confidence and ankle[2] >= self.min_confidence:
-                return np.sqrt((shoulder[0] - ankle[0])**2 + (shoulder[1] - ankle[1])**2) * 1.2
-            return 1.0
-        
-        height = np.sqrt((nose[0] - ankle[0])**2 + (nose[1] - ankle[1])**2)
-        return max(height, 1.0)
-    
-    def extract_frame_features(self, keypoints, prev_keypoints=None, fps=25.0):
-        """
-        Извлекает признаки из одного кадра
-        
-        Args:
-            keypoints: массив ключевых точек текущего кадра [[x, y, conf], ...]
-            prev_keypoints: массив ключевых точек предыдущего кадра (для скоростей)
-            fps: частота кадров
-        
-        Returns:
-            dict: словарь с признаками
-        """
-        if len(keypoints) < 17:
-            return None
-        
-        kps = np.array(keypoints)
-        height = self.estimate_person_height(kps)
-        
-        features = {}
-        
-        # ========== УГЛЫ СУСТАВОВ ==========
-        # Левый локоть
-        features['left_elbow_angle'] = self.compute_angle(
-            kps[KP['left_shoulder']], kps[KP['left_elbow']], kps[KP['left_wrist']]
-        )
-        
-        # Правый локоть
-        features['right_elbow_angle'] = self.compute_angle(
-            kps[KP['right_shoulder']], kps[KP['right_elbow']], kps[KP['right_wrist']]
-        )
-        
-        # Левое колено
-        features['left_knee_angle'] = self.compute_angle(
-            kps[KP['left_hip']], kps[KP['left_knee']], kps[KP['left_ankle']]
-        )
-        
-        # Правое колено
-        features['right_knee_angle'] = self.compute_angle(
-            kps[KP['right_hip']], kps[KP['right_knee']], kps[KP['right_ankle']]
-        )
-        
-        # Левое бедро
-        features['left_hip_angle'] = self.compute_angle(
-            kps[KP['left_shoulder']], kps[KP['left_hip']], kps[KP['left_knee']]
-        )
-        
-        # Правое бедро
-        features['right_hip_angle'] = self.compute_angle(
-            kps[KP['right_shoulder']], kps[KP['right_hip']], kps[KP['right_knee']]
-        )
-        
-        # ========== РАССТОЯНИЯ ==========
-        # Расстояние между запястьями (ширина рук)
-        features['wrists_distance'] = self.compute_distance(
-            kps[KP['left_wrist']], kps[KP['right_wrist']], 
-            normalize=True, height=height
-        )
-        
-        # Расстояние между лодыжками (ширина ног)
-        features['ankles_distance'] = self.compute_distance(
-            kps[KP['left_ankle']], kps[KP['right_ankle']], 
-            normalize=True, height=height
-        )
-        
-        # Высота левой руки относительно плеча
-        left_wrist_height = None
-        if kps[KP['left_wrist']][2] >= self.min_confidence and kps[KP['left_shoulder']][2] >= self.min_confidence:
-            left_wrist_height = (kps[KP['left_shoulder']][1] - kps[KP['left_wrist']][1]) / height
-        features['left_wrist_height'] = left_wrist_height
-        
-        # Высота правой руки относительно плеча
-        right_wrist_height = None
-        if kps[KP['right_wrist']][2] >= self.min_confidence and kps[KP['right_shoulder']][2] >= self.min_confidence:
-            right_wrist_height = (kps[KP['right_shoulder']][1] - kps[KP['right_wrist']][1]) / height
-        features['right_wrist_height'] = right_wrist_height
-        
-        # ========== СКОРОСТИ (если есть предыдущий кадр) ==========
-        if prev_keypoints is not None and len(prev_keypoints) == 17:
-            prev_kps = np.array(prev_keypoints)
-            
-            # Скорость левой руки
-            features['left_wrist_velocity'] = self.compute_velocity(
-                kps[KP['left_wrist']], prev_kps[KP['left_wrist']], fps
-            )
-            
-            # Скорость правой руки
-            features['right_wrist_velocity'] = self.compute_velocity(
-                kps[KP['right_wrist']], prev_kps[KP['right_wrist']], fps
-            )
-            
-            # Скорость левой ноги
-            features['left_ankle_velocity'] = self.compute_velocity(
-                kps[KP['left_ankle']], prev_kps[KP['left_ankle']], fps
-            )
-            
-            # Скорость правой ноги
-            features['right_ankle_velocity'] = self.compute_velocity(
-                kps[KP['right_ankle']], prev_kps[KP['right_ankle']], fps
-            )
-        
-        return features
-    
-    def extract_sequence_features(self, poses_data):
-        """
-        Извлекает признаки из последовательности кадров
-        
-        Args:
-            poses_data: данные поз из JSON файла
-        
-        Returns:
-            tuple: (features_array, valid_mask) где
-                features_array: numpy array размера (num_frames, num_features)
-                valid_mask: булев массив валидных кадров
-        """
-        frames = poses_data['frames']
-        fps = poses_data.get('fps', 25.0)
-        
-        feature_list = []
-        valid_mask = []
-        
-        prev_keypoints = None
-        
-        for frame_data in frames:
-            if not frame_data['valid'] or 'keypoints' not in frame_data:
-                feature_list.append(None)
-                valid_mask.append(False)
-                prev_keypoints = None
-                continue
-            
-            keypoints = frame_data['keypoints']
-            features = self.extract_frame_features(keypoints, prev_keypoints, fps)
-            
-            if features is None:
-                feature_list.append(None)
-                valid_mask.append(False)
-            else:
-                feature_list.append(features)
-                valid_mask.append(True)
-            
-            prev_keypoints = keypoints
-        
-        return feature_list, valid_mask
-    
-    def features_to_array(self, feature_list, feature_names=None):
-        """
-        Преобразует список словарей признаков в numpy array
+        Преобразует список словарей признаков в numpy массив
         
         Args:
             feature_list: список словарей с признаками
-            feature_names: список имен признаков для использования (по умолчанию все)
+            feature_names: список имен признаков для извлечения
         
         Returns:
-            tuple: (feature_array, feature_names, valid_indices)
+            feature_array: массив признаков (num_frames, num_features)
+            actual_feature_names: список имен признаков в массиве
+            valid_indices: индексы валидных кадров
         """
-        # Собираем все возможные имена признаков
-        if feature_names is None:
-            feature_names = set()
-            for features in feature_list:
-                if features is not None:
-                    feature_names.update(features.keys())
-            feature_names = sorted(list(feature_names))
+        if not feature_list:
+            return np.array([]), [], []
+        
+        # Определяем, какие признаки доступны
+        available_features = set()
+        for features in feature_list:
+            available_features.update(features.keys())
+        
+        # Используем только доступные признаки
+        actual_feature_names = [f for f in feature_names if f in available_features]
+        
+        if not actual_feature_names:
+            return np.array([]), [], []
         
         # Создаем массив
         num_frames = len(feature_list)
-        num_features = len(feature_names)
-        feature_array = np.full((num_frames, num_features), np.nan)
-        valid_indices = []
+        num_features = len(actual_feature_names)
+        feature_array = np.full((num_frames, num_features), np.nan, dtype=np.float32)
         
+        valid_indices = []
         for i, features in enumerate(feature_list):
-            if features is None:
-                continue
+            for j, feat_name in enumerate(actual_feature_names):
+                if feat_name in features:
+                    feature_array[i, j] = features[feat_name]
             
-            valid = True
-            for j, name in enumerate(feature_names):
-                value = features.get(name)
-                if value is None:
-                    valid = False
-                else:
-                    feature_array[i, j] = value
-            
-            if valid:
+            # Кадр валиден, если хотя бы половина признаков не NaN
+            if np.sum(~np.isnan(feature_array[i])) >= num_features // 2:
                 valid_indices.append(i)
         
-        return feature_array, feature_names, valid_indices
-
-
-def get_simple_features():
-    """Возвращает список простых показательных признаков для первичного анализа"""
-    return [
-        'left_elbow_angle',
-        'right_elbow_angle', 
-        'left_knee_angle',
-        'right_knee_angle',
-        'wrists_distance',
-        'ankles_distance',
-        'left_wrist_height',
-        'right_wrist_height'
-    ]
-
-
-if __name__ == "__main__":
-    # Пример использования
-    print("Доступные признаки:")
-    print("\nУглы суставов:")
-    print("- left_elbow_angle, right_elbow_angle")
-    print("- left_knee_angle, right_knee_angle")
-    print("- left_hip_angle, right_hip_angle")
-    print("\nРасстояния:")
-    print("- wrists_distance, ankles_distance")
-    print("- left_wrist_height, right_wrist_height")
-    print("\nСкорости:")
-    print("- left_wrist_velocity, right_wrist_velocity")
-    print("- left_ankle_velocity, right_ankle_velocity")
-    print("\nПростые признаки для первичного анализа:")
-    print(get_simple_features())
-
-
-Модуль извлечения признаков из поз для классификации танцевальных фигур
-"""
-import numpy as np
-from typing import List, Dict, Tuple
-
-
-# Индексы ключевых точек YOLO-Pose (COCO формат)
-# 0: нос, 1-2: глаза, 3-4: уши
-# 5-6: плечи, 7-8: локти, 9-10: запястья
-# 11-12: бедра, 13-14: колени, 15-16: лодыжки
-KEYPOINT_NAMES = [
-    'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
-    'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-    'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
-    'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
-]
-
-# Индексы для удобного доступа
-KP = {name: idx for idx, name in enumerate(KEYPOINT_NAMES)}
-
-
-class FeatureExtractor:
-    """Класс для извлечения признаков из поз"""
-    
-    def __init__(self, min_confidence=0.3):
-        """
-        Args:
-            min_confidence: минимальная уверенность для использования ключевой точки
-        """
-        self.min_confidence = min_confidence
-    
-    def compute_angle(self, p1, p2, p3):
-        """
-        Вычисляет угол между тремя точками (p2 - вершина угла)
-        
-        Args:
-            p1, p2, p3: точки в формате [x, y, confidence]
-        
-        Returns:
-            float: угол в градусах или None если точки невалидны
-        """
-        # Проверяем уверенность
-        if (p1[2] < self.min_confidence or 
-            p2[2] < self.min_confidence or 
-            p3[2] < self.min_confidence):
-            return None
-        
-        # Векторы
-        v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
-        v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
-        
-        # Вычисляем угол
-        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-        angle = np.arccos(cos_angle)
-        
-        return np.degrees(angle)
-    
-    def compute_distance(self, p1, p2, normalize=True, height=1.0):
-        """
-        Вычисляет расстояние между двумя точками
-        
-        Args:
-            p1, p2: точки в формате [x, y, confidence]
-            normalize: нормализовать по высоте человека
-            height: высота для нормализации
-        
-        Returns:
-            float: расстояние или None если точки невалидны
-        """
-        if p1[2] < self.min_confidence or p2[2] < self.min_confidence:
-            return None
-        
-        dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-        
-        if normalize and height > 0:
-            dist = dist / height
-        
-        return dist
-    
-    def compute_velocity(self, p1_curr, p1_prev, fps=25.0):
-        """
-        Вычисляет скорость движения точки между кадрами
-        
-        Args:
-            p1_curr: текущая позиция [x, y, confidence]
-            p1_prev: предыдущая позиция [x, y, confidence]
-            fps: частота кадров
-        
-        Returns:
-            float: скорость (пикселей/сек) или None если точки невалидны
-        """
-        if (p1_curr[2] < self.min_confidence or 
-            p1_prev[2] < self.min_confidence):
-            return None
-        
-        dx = p1_curr[0] - p1_prev[0]
-        dy = p1_curr[1] - p1_prev[1]
-        dist = np.sqrt(dx**2 + dy**2)
-        
-        velocity = dist * fps
-        return velocity
-    
-    def estimate_person_height(self, keypoints):
-        """
-        Оценивает высоту человека для нормализации
-        
-        Args:
-            keypoints: массив ключевых точек [[x, y, conf], ...]
-        
-        Returns:
-            float: оценка высоты
-        """
-        if len(keypoints) < 17:
-            return 1.0
-        
-        # Используем расстояние от носа до лодыжки
-        nose = keypoints[KP['nose']]
-        left_ankle = keypoints[KP['left_ankle']]
-        right_ankle = keypoints[KP['right_ankle']]
-        
-        # Выбираем более уверенную лодыжку
-        ankle = left_ankle if left_ankle[2] > right_ankle[2] else right_ankle
-        
-        if nose[2] < self.min_confidence or ankle[2] < self.min_confidence:
-            # Альтернативная оценка: от плеча до лодыжки
-            shoulder = keypoints[KP['left_shoulder']]
-            if shoulder[2] >= self.min_confidence and ankle[2] >= self.min_confidence:
-                return np.sqrt((shoulder[0] - ankle[0])**2 + (shoulder[1] - ankle[1])**2) * 1.2
-            return 1.0
-        
-        height = np.sqrt((nose[0] - ankle[0])**2 + (nose[1] - ankle[1])**2)
-        return max(height, 1.0)
-    
-    def extract_frame_features(self, keypoints, prev_keypoints=None, fps=25.0):
-        """
-        Извлекает признаки из одного кадра
-        
-        Args:
-            keypoints: массив ключевых точек текущего кадра [[x, y, conf], ...]
-            prev_keypoints: массив ключевых точек предыдущего кадра (для скоростей)
-            fps: частота кадров
-        
-        Returns:
-            dict: словарь с признаками
-        """
-        if len(keypoints) < 17:
-            return None
-        
-        kps = np.array(keypoints)
-        height = self.estimate_person_height(kps)
-        
-        features = {}
-        
-        # ========== УГЛЫ СУСТАВОВ ==========
-        # Левый локоть
-        features['left_elbow_angle'] = self.compute_angle(
-            kps[KP['left_shoulder']], kps[KP['left_elbow']], kps[KP['left_wrist']]
-        )
-        
-        # Правый локоть
-        features['right_elbow_angle'] = self.compute_angle(
-            kps[KP['right_shoulder']], kps[KP['right_elbow']], kps[KP['right_wrist']]
-        )
-        
-        # Левое колено
-        features['left_knee_angle'] = self.compute_angle(
-            kps[KP['left_hip']], kps[KP['left_knee']], kps[KP['left_ankle']]
-        )
-        
-        # Правое колено
-        features['right_knee_angle'] = self.compute_angle(
-            kps[KP['right_hip']], kps[KP['right_knee']], kps[KP['right_ankle']]
-        )
-        
-        # Левое бедро
-        features['left_hip_angle'] = self.compute_angle(
-            kps[KP['left_shoulder']], kps[KP['left_hip']], kps[KP['left_knee']]
-        )
-        
-        # Правое бедро
-        features['right_hip_angle'] = self.compute_angle(
-            kps[KP['right_shoulder']], kps[KP['right_hip']], kps[KP['right_knee']]
-        )
-        
-        # ========== РАССТОЯНИЯ ==========
-        # Расстояние между запястьями (ширина рук)
-        features['wrists_distance'] = self.compute_distance(
-            kps[KP['left_wrist']], kps[KP['right_wrist']], 
-            normalize=True, height=height
-        )
-        
-        # Расстояние между лодыжками (ширина ног)
-        features['ankles_distance'] = self.compute_distance(
-            kps[KP['left_ankle']], kps[KP['right_ankle']], 
-            normalize=True, height=height
-        )
-        
-        # Высота левой руки относительно плеча
-        left_wrist_height = None
-        if kps[KP['left_wrist']][2] >= self.min_confidence and kps[KP['left_shoulder']][2] >= self.min_confidence:
-            left_wrist_height = (kps[KP['left_shoulder']][1] - kps[KP['left_wrist']][1]) / height
-        features['left_wrist_height'] = left_wrist_height
-        
-        # Высота правой руки относительно плеча
-        right_wrist_height = None
-        if kps[KP['right_wrist']][2] >= self.min_confidence and kps[KP['right_shoulder']][2] >= self.min_confidence:
-            right_wrist_height = (kps[KP['right_shoulder']][1] - kps[KP['right_wrist']][1]) / height
-        features['right_wrist_height'] = right_wrist_height
-        
-        # ========== СКОРОСТИ (если есть предыдущий кадр) ==========
-        if prev_keypoints is not None and len(prev_keypoints) == 17:
-            prev_kps = np.array(prev_keypoints)
-            
-            # Скорость левой руки
-            features['left_wrist_velocity'] = self.compute_velocity(
-                kps[KP['left_wrist']], prev_kps[KP['left_wrist']], fps
-            )
-            
-            # Скорость правой руки
-            features['right_wrist_velocity'] = self.compute_velocity(
-                kps[KP['right_wrist']], prev_kps[KP['right_wrist']], fps
-            )
-            
-            # Скорость левой ноги
-            features['left_ankle_velocity'] = self.compute_velocity(
-                kps[KP['left_ankle']], prev_kps[KP['left_ankle']], fps
-            )
-            
-            # Скорость правой ноги
-            features['right_ankle_velocity'] = self.compute_velocity(
-                kps[KP['right_ankle']], prev_kps[KP['right_ankle']], fps
-            )
-        
-        return features
-    
-    def extract_sequence_features(self, poses_data):
-        """
-        Извлекает признаки из последовательности кадров
-        
-        Args:
-            poses_data: данные поз из JSON файла
-        
-        Returns:
-            tuple: (features_array, valid_mask) где
-                features_array: numpy array размера (num_frames, num_features)
-                valid_mask: булев массив валидных кадров
-        """
-        frames = poses_data['frames']
-        fps = poses_data.get('fps', 25.0)
-        
-        feature_list = []
-        valid_mask = []
-        
-        prev_keypoints = None
-        
-        for frame_data in frames:
-            if not frame_data['valid'] or 'keypoints' not in frame_data:
-                feature_list.append(None)
-                valid_mask.append(False)
-                prev_keypoints = None
-                continue
-            
-            keypoints = frame_data['keypoints']
-            features = self.extract_frame_features(keypoints, prev_keypoints, fps)
-            
-            if features is None:
-                feature_list.append(None)
-                valid_mask.append(False)
-            else:
-                feature_list.append(features)
-                valid_mask.append(True)
-            
-            prev_keypoints = keypoints
-        
-        return feature_list, valid_mask
-    
-    def features_to_array(self, feature_list, feature_names=None):
-        """
-        Преобразует список словарей признаков в numpy array
-        
-        Args:
-            feature_list: список словарей с признаками
-            feature_names: список имен признаков для использования (по умолчанию все)
-        
-        Returns:
-            tuple: (feature_array, feature_names, valid_indices)
-        """
-        # Собираем все возможные имена признаков
-        if feature_names is None:
-            feature_names = set()
-            for features in feature_list:
-                if features is not None:
-                    feature_names.update(features.keys())
-            feature_names = sorted(list(feature_names))
-        
-        # Создаем массив
-        num_frames = len(feature_list)
-        num_features = len(feature_names)
-        feature_array = np.full((num_frames, num_features), np.nan)
-        valid_indices = []
-        
-        for i, features in enumerate(feature_list):
-            if features is None:
-                continue
-            
-            valid = True
-            for j, name in enumerate(feature_names):
-                value = features.get(name)
-                if value is None:
-                    valid = False
-                else:
-                    feature_array[i, j] = value
-            
-            if valid:
-                valid_indices.append(i)
-        
-        return feature_array, feature_names, valid_indices
-
-
-def get_simple_features():
-    """Возвращает список простых показательных признаков для первичного анализа"""
-    return [
-        'left_elbow_angle',
-        'right_elbow_angle', 
-        'left_knee_angle',
-        'right_knee_angle',
-        'wrists_distance',
-        'ankles_distance',
-        'left_wrist_height',
-        'right_wrist_height'
-    ]
-
-
-if __name__ == "__main__":
-    # Пример использования
-    print("Доступные признаки:")
-    print("\nУглы суставов:")
-    print("- left_elbow_angle, right_elbow_angle")
-    print("- left_knee_angle, right_knee_angle")
-    print("- left_hip_angle, right_hip_angle")
-    print("\nРасстояния:")
-    print("- wrists_distance, ankles_distance")
-    print("- left_wrist_height, right_wrist_height")
-    print("\nСкорости:")
-    print("- left_wrist_velocity, right_wrist_velocity")
-    print("- left_ankle_velocity, right_ankle_velocity")
-    print("\nПростые признаки для первичного анализа:")
-    print(get_simple_features())
-
+        return feature_array, actual_feature_names, valid_indices
 

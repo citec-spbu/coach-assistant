@@ -1,75 +1,58 @@
-# Классификатор танцевальных фигур
+# Dance Classifier
 
-## Описание
-Система классификации танцевальных фигур на основе поз, извлеченных из видео с помощью модуля DancePose.
-
-## Структура проекта
-```
-dance_classifier/
-├── data_preparation/
-│   ├── extract_poses.py          # Извлечение поз из видео
-│   ├── feature_extraction.py     # Извлечение признаков
-│   └── dataset_builder.py        # Подготовка датасета
-├── models/
-│   ├── gru_classifier.py         # GRU модель
-│   └── tcn_classifier.py         # TCN модель
-├── training/
-│   ├── train.py                  # Скрипт обучения
-│   └── config.yaml               # Конфигурация
-├── inference/
-│   └── predict.py                # Инференс
-├── notebooks/
-│   └── analysis.ipynb            # Анализ и визуализация
-└── utils/
-    └── helpers.py                # Вспомогательные функции
-```
-
-## Признаки
-1. **Углы суставов**: Локти, колени, бедра
-2. **Расстояния**: Между ключевыми точками (руки, ноги)
-3. **Скорости**: Изменение положения суставов между кадрами
+Классификатор танцевальных движений с метриками качества исполнения.
 
 ## Использование
-1. Извлечение поз: `python data_preparation/extract_poses.py`
-2. Подготовка данных: `python data_preparation/dataset_builder.py`
-3. Обучение: `python training/train.py --config training/config.yaml`
-4. Инференс: `python inference/predict.py --video path/to/video.mp4`
 
+```python
+from dance_classifier.inference.predict import DanceClassifierPredictor
 
+predictor = DanceClassifierPredictor(
+    model_path="best_model_20pct.pth",
+    reference_dir=None,  # Автоматически найдет в reference_trajectories/
+    videos_dir=None
+)
 
-## Описание
-Система классификации танцевальных фигур на основе поз, извлеченных из видео с помощью модуля DancePose.
-
-## Структура проекта
-```
-dance_classifier/
-├── data_preparation/
-│   ├── extract_poses.py          # Извлечение поз из видео
-│   ├── feature_extraction.py     # Извлечение признаков
-│   └── dataset_builder.py        # Подготовка датасета
-├── models/
-│   ├── gru_classifier.py         # GRU модель
-│   └── tcn_classifier.py         # TCN модель
-├── training/
-│   ├── train.py                  # Скрипт обучения
-│   └── config.yaml               # Конфигурация
-├── inference/
-│   └── predict.py                # Инференс
-├── notebooks/
-│   └── analysis.ipynb            # Анализ и визуализация
-└── utils/
-    └── helpers.py                # Вспомогательные функции
+result = predictor.predict_from_poses("poses.jsonl", video_path="video.mp4")
 ```
 
-## Признаки
-1. **Углы суставов**: Локти, колени, бедра
-2. **Расстояния**: Между ключевыми точками (руки, ноги)
-3. **Скорости**: Изменение положения суставов между кадрами
+## Структура
 
-## Использование
-1. Извлечение поз: `python data_preparation/extract_poses.py`
-2. Подготовка данных: `python data_preparation/dataset_builder.py`
-3. Обучение: `python training/train.py --config training/config.yaml`
-4. Инференс: `python inference/predict.py --video path/to/video.mp4`
+- data_preparation/ - подготовка данных и извлечение признаков
+- training/ - обучение моделей
+- inference/ - предсказание и метрики качества
+- utils/ - DTW-метрики (spatial_similarity, balance, timing, classifier_clarity)
+- reference_trajectories/ - эталонные траектории для сравнения
 
+## Модели
+
+- GRU - рекуррентная нейронная сеть
+- TCN - временная свёрточная сеть
+- Hybrid - комбинация TCN + GRU
+
+## Метрики качества исполнения
+
+Классификатор возвращает 4 метрики качества исполнения танцевальной фигуры:
+
+1. **Spatial Similarity (Техника)** - оценка 0-100
+   - Сравнивает движения танцора с эталонной траекторией через DTW
+   - Показывает, насколько точно повторяются движения эталона
+   - Чем выше, тем лучше техника
+
+2. **Classifier Clarity (Разборчивость)** - оценка 0-100
+   - Показывает, насколько уверена модель в своем предсказании
+   - Анализирует уверенность по скользящим окнам
+   - Чем выше, тем четче и однозначнее выполняется фигура
+
+3. **Timing (Ритм)** - оценка 0-100
+   - Проверяет синхронизацию шагов с битами музыки
+   - Требует video_path для извлечения аудио
+   - Показывает, насколько танцор попадает в такт
+
+4. **Balance (Баланс)** - оценка 0-100
+   - Оценивает устойчивость и правильность осанки
+   - Анализирует наклон корпуса и центр масс
+   - Показывает стабильность корпуса во время исполнения
+
+Все метрики вычисляются автоматически при вызове `predict_from_poses()` с `compute_metrics=True`.
 

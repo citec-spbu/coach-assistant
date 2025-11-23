@@ -1,10 +1,6 @@
-import os, sys, cv2, yaml, math
+import os, cv2, yaml, math
 import numpy as np
 from pathlib import Path
-
-# Добавляем путь к родительской папке для импорта src
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 from src.utils.io_utils import ensure_dir, JsonlWriter, SimpleLogger
 from src.inference.pose_infer import PoseExtractor
 from src.viz.overlay import draw_pose, SmoothBuffer

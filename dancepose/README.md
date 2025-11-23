@@ -1,32 +1,41 @@
-# DancePose Module
+# DancePose
 
-The **DancePose** module is designed to detect a dancer’s body and extract keypoint coordinates from video frames.  
-It serves as the foundation for motion analysis and performance evaluation in the *Coach Assistant* project.
+Модуль извлечения поз из видео с помощью YOLOv8-Pose.
 
----
+## Использование
 
-## 📁 Project Structure and File Descriptions
+### Из командной строки:
+```bash
+python -m dancepose.scripts.run_pose --video video.mp4 --output outputs/my_video
+```
 
-- **configs/default.yaml** — Configuration file containing video path, model name, confidence thresholds, and output options.  
-- **scripts/run_pose.py** — Main entry script that loads configuration, runs YOLOv8-Pose inference, and saves results.  
-- **src/inference/pose_infer.py** — Core inference logic: loads the pretrained model and performs per-frame pose detection.  
-- **src/viz/overlay.py** — Visualization utilities: draws skeletons and keypoints on video frames to produce overlay output.  
-- **src/utils/io_utils.py** — Handles input/output operations such as directory creation, JSONL writing, and logging.  
+### Из Python кода:
+```python
+from dancepose.scripts.run_pose import main
 
----
+main(video_path="video.mp4", output_dir="outputs/my_video")
+```
 
-## How to Use
+### Асинхронная версия:
+```python
+from dancepose.scripts.run_pose_async import process_video_async
 
-1. Install the dependencies listed in the requirements section.
-2. The data I used comes from this dataset:
-https://google.github.io/aistplusplus_dataset/factsfigures.html
-3. Open the configuration file 'configs/default.yaml' and modify paths for your video input and model weights if necessary.  
-4. Run run_pose.py
+result = await process_video_async("video.mp4", "outputs/my_video")
+```
 
----
+## Структура
 
-## Notes
+- src/inference/pose_infer.py - загрузка модели YOLOv8 и детекция поз
+- src/utils/io_utils.py - операции ввода/вывода
+- src/viz/overlay.py - визуализация скелета на видео
+- scripts/run_pose.py - основной скрипт
+- scripts/run_pose_async.py - асинхронная версия
 
-The current prototype supports single-person detection only.
-Model weights (yolov8s-pose.pt or similar) will be downloaded automatically if not found locally.
-The module is built on the Ultralytics YOLOv8-Pose framework and provides pose data for further dance-quality evaluation.
+## Формат вывода
+
+Результаты сохраняются в poses.jsonl - каждая строка это JSON с ключевыми точками:
+- frame_idx: номер кадра
+- valid: валидность детекции
+- keypoints: массив из 17 точек [[x, y, confidence], ...]
+
+Модель YOLOv8 скачивается автоматически при первом использовании.
