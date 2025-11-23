@@ -42,15 +42,21 @@ def _load_audio_and_beats(
     import shutil
     import tempfile
     import os
+    import warnings
 
     audio_path = Path(audio_path).resolve()
     if not audio_path.exists():
         raise FileNotFoundError(f"Файл аудио/видео не найден: {audio_path}")
 
-    # Пробуем загрузить напрямую через librosa
-    try:
-        y, sr = librosa.load(str(audio_path), sr=None, mono=True)
-    except Exception as e:
+    # Подавляем предупреждения librosa о PySoundFile и audioread
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning, module='librosa')
+        warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
+        
+        # Пробуем загрузить напрямую через librosa
+        try:
+            y, sr = librosa.load(str(audio_path), sr=None, mono=True)
+        except Exception as e:
         # Если не получилось (проблема с audioread/ffmpeg), извлекаем аудио через subprocess
         ffmpeg_path = shutil.which('ffmpeg')
         if not ffmpeg_path:
@@ -117,8 +123,11 @@ def _load_audio_and_beats(
                     f"Ошибка извлечения аудио через ffmpeg: {result.stderr}"
                 ) from e
             
-            # Загружаем извлеченное аудио
-            y, sr = librosa.load(tmp_audio_path, sr=None, mono=True)
+            # Загружаем извлеченное аудио (подавляем предупреждения)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=UserWarning, module='librosa')
+                warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
+                y, sr = librosa.load(tmp_audio_path, sr=None, mono=True)
         finally:
             # Удаляем временный файл
             if os.path.exists(tmp_audio_path):
@@ -127,8 +136,12 @@ def _load_audio_and_beats(
                 except:
                     pass
     
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-    beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+    # Вычисляем биты (подавляем предупреждения)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning, module='librosa')
+        warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
+        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+        beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
     return float(tempo), beat_times
 
