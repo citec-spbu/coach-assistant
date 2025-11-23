@@ -12,7 +12,12 @@
         reference_dir=None  # Автоматически найдет в reference_trajectories/
     )
     
-    result = predictor.predict_from_poses("poses.jsonl", video_path="video.mp4")
+    result = predictor.predict_from_poses(
+        "poses.jsonl", 
+        video_path="video.mp4",
+        create_analyzed_video=True,  # Создать analyzed_ видео с метриками
+        overlay_video_path="overlay_video.mp4"  # Опционально, ищет автоматически
+    )
 """
 
 import torch
@@ -22,6 +27,7 @@ import pickle
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+import cv2
 
 # Разрешить загрузку sklearn классов
 try:
@@ -188,7 +194,10 @@ class DanceClassifierPredictor:
         self,
         poses_json_path: str,
         video_path: Optional[str] = None,
-        compute_metrics: bool = True
+        compute_metrics: bool = True,
+        create_analyzed_video: bool = False,
+        overlay_video_path: Optional[str] = None,
+        output_dir: Optional[str] = None
     ) -> Dict:
         """
         Полное предсказание с метриками качества.
@@ -197,9 +206,13 @@ class DanceClassifierPredictor:
             poses_json_path: путь к poses.jsonl
             video_path: путь к видео (для тайминг-метрики)
             compute_metrics: вычислять ли DTW-метрики
+            create_analyzed_video: создавать ли analyzed_ видео с наложенными метриками
+            overlay_video_path: путь к overlay видео (с позами). Если None, ищет автоматически
+            output_dir: директория для сохранения analyzed видео. Если None, использует директорию overlay видео
         
         Returns:
-            dict с результатами классификации и метриками
+            dict с результатами классификации и метриками. Если create_analyzed_video=True,
+            также содержит 'analyzed_video_path' с путем к созданному видео.
         """
         # Загружаем позы и извлекаем признаки
         from ..data_preparation.feature_extraction import FeatureExtractor, get_simple_features
@@ -515,6 +528,18 @@ class DanceClassifierPredictor:
                 }
             
             print("4")
+            
+            # Создаем analyzed_ видео, если запрошено
+            if create_analyzed_video and result.get('success', False):
+                analyzed_video_path = self._create_analyzed_video(
+                    result=result,
+                    overlay_video_path=overlay_video_path,
+                    poses_json_path=poses_json_path,
+                    output_dir=output_dir
+                )
+                if analyzed_video_path:
+                    result['analyzed_video_path'] = str(analyzed_video_path)
+            
             return result
         except Exception as e:
             import traceback
@@ -580,13 +605,18 @@ class DanceClassifierPredictor:
             )
             
             return {
-                "score": float(result.score),
-                "mean_distance": float(result.mean_distance),
+                "score": float(result.score) if not np.isnan(result.score) else 0.0,
+                "mean_distance": float(result.mean_distance) if not np.isnan(result.mean_distance) else 0.0,
                 "reference_figure": predicted_class,
                 "error_segments": result.error_segments if hasattr(result, 'error_segments') else []
             }
         except Exception as e:
-            return {"error": str(e)}
+            return {
+                "score": 0.0,
+                "error": str(e),
+                "mean_distance": None,
+                "error_segments": []
+            }
     
     def _compute_classifier_clarity(
         self,
@@ -774,6 +804,220 @@ class DanceClassifierPredictor:
         except Exception as e:
             error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
             return {"error": error_msg}
+    
+    def _create_analyzed_video(
+        self,
+        result: Dict,
+        overlay_video_path: Optional[str] = None,
+        poses_json_path: Optional[str] = None,
+        output_dir: Optional[str] = None
+    ) -> Optional[Path]:
+        """
+        Создает analyzed_ видео с наложенными метриками.
+        
+        Args:
+            result: результат анализа из predict_from_poses
+            overlay_video_path: путь к overlay видео (с позами)
+            poses_json_path: путь к poses.jsonl (для поиска overlay видео)
+            output_dir: директория для сохранения analyzed видео
+        
+        Returns:
+            Path к созданному видео или None при ошибке
+        """
+        try:
+            # Определяем overlay_video_path
+            if not overlay_video_path and poses_json_path:
+                # Пытаемся найти overlay видео в той же директории, что и poses.jsonl
+                poses_path = Path(poses_json_path)
+                poses_dir = poses_path.parent
+                
+                # Ищем overlay_*.mp4 в директории poses.jsonl
+                overlay_candidates = list(poses_dir.glob("overlay_*.mp4"))
+                if overlay_candidates:
+                    overlay_video_path = str(overlay_candidates[0])
+                else:
+                    print(f"[WARN] Overlay video not found in {poses_dir}")
+                    return None
+            
+            if not overlay_video_path:
+                print("[WARN] overlay_video_path not provided and cannot be found")
+                return None
+            
+            overlay_path = Path(overlay_video_path)
+            if not overlay_path.exists():
+                print(f"[WARN] Overlay video not found: {overlay_path}")
+                return None
+            
+            # Определяем output_dir
+            if not output_dir:
+                output_dir = overlay_path.parent
+            else:
+                output_dir = Path(output_dir)
+            
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Имя выходного файла
+            video_name = overlay_path.stem.replace("overlay_", "")
+            analyzed_video_path = output_dir / f"analyzed_{video_name}.mp4"
+            
+            print(f"\n[INFO] Creating analyzed video: {analyzed_video_path.name}")
+            
+            # Извлекаем данные из result
+            figure = result.get('predicted_figure') or result.get('predicted_class', 'Unknown')
+            confidence = result.get('confidence', 0.0) * 100
+            
+            # Извлекаем scores
+            scores = result.get('scores', {})
+            
+            # Открываем overlay видео
+            cap = cv2.VideoCapture(str(overlay_path))
+            if not cap.isOpened():
+                print(f"[ERROR] Cannot open overlay video: {overlay_path}")
+                return None
+            
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            # Создаем выходное видео
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(str(analyzed_video_path), fourcc, fps, (width, height))
+            
+            if not out.isOpened():
+                print("[ERROR] Cannot create video writer")
+                cap.release()
+                return None
+            
+            # Метрики для отображения
+            metrics_list = [
+                ("Technique", scores.get('technique', {}).get('score', 0.0)),
+                ("Timing", scores.get('timing', {}).get('score', 0.0)),
+                ("Balance", scores.get('balance', {}).get('score', 0.0)),
+                ("Dynamics", scores.get('dynamics', {}).get('score', 0.0)),
+                ("Posture", scores.get('posture', {}).get('score', 0.0))
+            ]
+            
+            frame_idx = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                h, w = frame.shape[:2]
+                
+                # ===== ВЕРХНЯЯ ПАНЕЛЬ =====
+                overlay = frame.copy()
+                cv2.rectangle(overlay, (0, 0), (w, 260), (0, 0, 0), -1)
+                frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+                
+                # Название фигуры
+                cv2.putText(frame, f"FIGURE: {figure}", (120, 200),
+                           cv2.FONT_HERSHEY_DUPLEX, 1.8, (0, 255, 255), 4)
+                
+                # Уверенность
+                conf_color = (0, 255, 0) if confidence >= 70 else (0, 165, 255) if confidence >= 50 else (0, 0, 255)
+                cv2.putText(frame, f"CONFIDENCE: {confidence:.1f}%", (120, 240),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, conf_color, 3)
+                
+                # ===== ПРАВАЯ ПАНЕЛЬ - МЕТРИКИ =====
+                panel_w = 360
+                panel_h = 450
+                panel_x = w - panel_w - 400
+                panel_y = 180
+                
+                overlay2 = frame.copy()
+                cv2.rectangle(overlay2, (panel_x, panel_y), (panel_x + panel_w, panel_y + panel_h), (30, 30, 30), -1)
+                frame = cv2.addWeighted(overlay2, 0.75, frame, 0.25, 0)
+                
+                # Заголовок
+                cv2.putText(frame, "QUALITY METRICS", (panel_x + 15, panel_y + 40),
+                           cv2.FONT_HERSHEY_DUPLEX, 1.3, (255, 255, 255), 2)
+                
+                # Линия
+                cv2.line(frame, (panel_x + 15, panel_y + 55), (panel_x + panel_w - 15, panel_y + 55), (200, 200, 200), 2)
+                
+                # Метрики
+                y_pos = panel_y + 90
+                for name, score in metrics_list:
+                    # Цвет
+                    if score >= 70:
+                        color = (0, 255, 0)  # Зеленый
+                    elif score >= 50:
+                        color = (0, 165, 255)  # Оранжевый
+                    else:
+                        color = (0, 0, 255)  # Красный
+                    
+                    # Название
+                    cv2.putText(frame, name, (panel_x + 15, y_pos),
+                               cv2.FONT_HERSHEY_SIMPLEX, 1.3, (220, 220, 220), 2)
+                    
+                    # Прогресс-бар
+                    bar_x = panel_x + 15
+                    bar_y = y_pos + 15
+                    bar_w = 180
+                    bar_h = 28
+                    
+                    # Фон
+                    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (60, 60, 60), -1)
+                    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (100, 100, 100), 2)
+                    
+                    # Заполнение
+                    fill_w = int(bar_w * (score / 100))
+                    if fill_w > 0:
+                        cv2.rectangle(frame, (bar_x + 2, bar_y + 2), (bar_x + fill_w - 2, bar_y + bar_h - 2), color, -1)
+                    
+                    # Значение
+                    score_text = f"{score:.1f}"
+                    text_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+                    text_x = bar_x + bar_w + 10
+                    text_y = bar_y + bar_h // 2 + text_size[1] // 2
+                    max_x = panel_x + panel_w - 10
+                    if text_x + text_size[0] > max_x:
+                        text_x = max_x - text_size[0] - 5
+                    cv2.putText(frame, score_text, (text_x, text_y),
+                               cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                    
+                    y_pos += 70
+                
+                # ===== НИЖНЯЯ ПАНЕЛЬ - ПРОГРЕСС =====
+                overlay3 = frame.copy()
+                cv2.rectangle(overlay3, (0, h-60), (w, h), (0, 0, 0), -1)
+                frame = cv2.addWeighted(overlay3, 0.7, frame, 0.3, 0)
+                
+                progress = frame_idx / total_frames if total_frames > 0 else 0
+                bar_w = w - 40
+                bar_h = 20
+                fill_w = int(bar_w * progress)
+                
+                cv2.rectangle(frame, (20, h-40), (20 + bar_w, h-20), (60, 60, 60), -1)
+                cv2.rectangle(frame, (20, h-40), (20 + bar_w, h-20), (100, 100, 100), 2)
+                cv2.rectangle(frame, (20, h-40), (20 + fill_w, h-20), (0, 255, 0), -1)
+                
+                # Время
+                time_text = f"{frame_idx}/{total_frames} frames"
+                cv2.putText(frame, time_text, (20, h-10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+                
+                out.write(frame)
+                frame_idx += 1
+                
+                if frame_idx % 30 == 0:
+                    percent = (frame_idx / total_frames) * 100 if total_frames > 0 else 0
+                    print(f"  Progress: {percent:.1f}% ({frame_idx}/{total_frames})", end='\r')
+            
+            cap.release()
+            out.release()
+            
+            print(f"\n[OK] Analyzed video created: {analyzed_video_path}")
+            print(f"  Size: {analyzed_video_path.stat().st_size / (1024*1024):.2f} MB")
+            
+            return analyzed_video_path
+            
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Failed to create analyzed video: {e}\n{traceback.format_exc()}")
+            return None
 
 
 def main():
@@ -813,7 +1057,21 @@ def main():
         device='cpu'
     )
     
-    result = predictor.predict_from_poses(poses_path, video_path)
+    # Пытаемся найти overlay видео и создать analyzed видео
+    poses_path_obj = Path(poses_path)
+    poses_dir = poses_path_obj.parent
+    overlay_candidates = list(poses_dir.glob("overlay_*.mp4"))
+    
+    create_video = len(overlay_candidates) > 0
+    overlay_video_path = str(overlay_candidates[0]) if overlay_candidates else None
+    
+    result = predictor.predict_from_poses(
+        poses_path, 
+        video_path,
+        create_analyzed_video=create_video,
+        overlay_video_path=overlay_video_path,
+        output_dir=str(poses_dir)
+    )
     
     if result['success']:
         print(f"\nFigure: {result['predicted_class']}")
@@ -840,6 +1098,9 @@ def main():
         
         if 'balance' in result and 'score' in result['balance']:
             print(f"Balance: {result['balance']['score']:.1f}/100")
+        
+        if 'analyzed_video_path' in result:
+            print(f"\nAnalyzed video: {result['analyzed_video_path']}")
     else:
         print(f"\nError: {result['error']}")
 
