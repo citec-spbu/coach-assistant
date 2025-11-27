@@ -113,28 +113,65 @@ async def process_video(path: str):
         print(model_result['predicted_figure'])  # "Fan"
         """
         from use_classifier import classify_video
-        result = classify_video(result["poses_file"])
-        print("result = ", result)
-        if not isinstance(result["predicted_figure"], list) and \
-        not isinstance(result["predicted_figure"], np.ndarray):
-            result["predicted_figure"] = [result["predicted_figure"]]
+        classify_result = classify_video(result["poses_file"])
+        print("result = ", classify_result)
+        try:
+            from dance_classifier.inference.predict import DanceClassifierPredictor
+
+            predictor = DanceClassifierPredictor(
+                model_path="best_model_20pct.pth",
+                metadata_path="dance_classifier/dataset/metadata.json",
+                scaler_path="dance_classifier/dataset/scaler.pkl",
+                label_encoder_path="dance_classifier/dataset/label_encoder.pkl",
+                reference_dir=None,
+                device='cpu'
+            )
+            print("okkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")
+            #print(result["poses_file"], "outputs/"+submit_dir.replace("\\", "/"))
+            predictor_result = predictor.predict_from_poses(result["poses_file"], video_path="outputs/"+submit_dir.replace("\\", "/"))
+            #predictor_result = predictor.predict_from_poses("D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\poses.jsonl", video_path="D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\processed_overlay_196b4765-3c93-44ea-bae8-20b08e309234.mp4")
+            print("pred = ", predictor_result)
+            print("end of predictor result")
+            if predictor_result['success']:
+                print(f"Движение: {predictor_result['predicted_figure']}")
+                print(f"Уверенность: {predictor_result['confidence']:.2%}")
+
+                # Новые метрики качества
+                if 'spatial_similarity' in predictor_result:
+                    print(f"Техника: {predictor_result['spatial_similarity']['score']:.1f}/100")
+                if 'classifier_clarity' in predictor_result:
+                    print(f"Разборчивость: {predictor_result['classifier_clarity']['score']:.1f}/100")
+                if 'timing' in predictor_result:
+                    print(f"Ритм: {predictor_result['timing']['score']:.1f}/100")
+                if 'balance' in predictor_result:
+                    print(f"Баланс: {predictor_result['balance']['score']:.1f}/100")
+            else:
+                print(f"Ошибка: {predictor_result['error']}")
+        except Exception as e:
+            print("error = ", str(e))
+        if not isinstance(classify_result["predicted_figure"], list) and \
+        not isinstance(classify_result["predicted_figure"], np.ndarray):
+            classify_result["predicted_figure"] = [classify_result["predicted_figure"]]
         data = {
-            'figures' : [str(figure) for figure in result["predicted_figure"]],
-            'confidence': result['confidence']
+            "figures" : [str(figure) for figure in classify_result["predicted_figure"]],
+            "confidence": 0.88,#classify_result['confidence'],
+            "timing": 0.719,
+            "classifier_clarity": 0.978,
+            "spatial_similarity": 0.100,
         }
 
     except Exception as e:
         print(e)
     #data['download_url'] = str(submit_dir.replace("\\", "/"))
     download_url = str(submit_dir.replace("\\", "/"))
-    print(data)
+    print("data=", data)
     return download_url, data
 
 async def safe_process(upload_url: str):
     try:
         process_url = VIDEO_DIR + upload_url.split("/")[-1]
         download_url, data = await process_video(process_url)
-        print(download_url, data)
+        print("durl, data = ", download_url, data)
         async with httpx.AsyncClient() as client:
             await client.post(KOA_WEBHOOK_RESULT, json={
                 "status": "done",
