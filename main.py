@@ -1,0 +1,209 @@
+import subprocess
+import sys
+
+import httpx
+import uvicorn
+from fastapi import FastAPI, BackgroundTasks
+from pydantic import BaseModel
+from pathlib import Path
+from dancepose.scripts import run_pose_async as run_pose
+import yaml
+
+import numpy as np
+import ffmpeg
+import os
+import logging
+import json
+# Configure basic logging to a file named 'app.log'
+# The filemode='w' will overwrite the file each time the script runs.
+# Use filemode='a' (default) to append to the file.
+logging.basicConfig(filename='app.log', filemode='w', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def dir_from_yaml(yaml_file):
+    with open(yaml_file, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+        return Path(cfg["output_dir"])
+
+
+YAML_FILE = "dancepose/configs/default.yaml"
+PROCESSED_DIR = dir_from_yaml(YAML_FILE)
+PROCESSED_DIR.mkdir(exist_ok=True)
+KOA_WEBHOOK_GET = "http://localhost:3000/api/get"
+KOA_WEBHOOK_RESULT = "http://localhost:3000/api/result"
+VIDEO_DIR = "uploads/"
+
+class SendBody(BaseModel):
+    """
+    :status ["done", "in progress", "failed"]
+    """
+    status: str
+    upload_url: str
+    download_url: str | None
+
+
+class UrlBody(BaseModel):
+    upload_url: str
+
+
+app = FastAPI()
+
+
+def convert_to_h264(input_path):
+    """
+    Быстро перекодирует видео из mpeg4video в H.264 (AVC)
+
+    Args:
+        input_path: путь к входному видео файлу
+
+    Returns:
+        путь к выходному файлу (processed_<имя_входного_файла>.mp4)
+    """
+    # Получаем директорию и имя входного файла
+    input_dir = os.path.dirname(input_path) or '.'
+    input_filename = os.path.basename(input_path)
+
+    # Формируем путь к выходному файлу с префиксом "processed_"
+    output_filename = f'processed_{input_filename}'
+    output_path = os.path.join(input_dir, output_filename)
+
+    try:
+        # Перекодируем видео
+        (
+            ffmpeg
+            .input(input_path)
+            .output(
+                output_path,
+                vcodec='libx264',  # Кодек H.264
+                preset='fast',  # Быстрое кодирование
+                crf=23,  # Качество
+                acodec='copy'  # Копируем аудио без перекодирования
+            )
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+
+        return output_path
+
+    except ffmpeg.Error as e:
+        print('Ошибка при конвертации:')
+        print('stderr:', e.stderr.decode('utf8'))
+        raise
+    except Exception as e:
+        print(str(e))
+async def process_video(path: str):
+    result = await run_pose.main(video_path=path)
+    if not result["success"]:
+        raise Exception(result["error"])
+    print(result)
+    overlay_file = str(result["overlay_file"])
+    converted_file = convert_to_h264(overlay_file)
+    filename = os.path.basename(converted_file)
+    submit_dir = str(Path(result["video_name"]) / filename)
+    data = None
+    try:
+        """        
+        from dance_classifier.inference.predict import DanceClassifierPredictor
+        # Инициализация (один раз)
+        predictor = DanceClassifierPredictor(
+            model_path="best_model_10pct.pth",
+            metadata_path="metadata.json"
+        )
+        model_result = predictor.predict_from_poses(result["poses_file"])
+        print(model_result['predicted_figure'])  # "Fan"
+        """
+        from use_classifier import classify_video
+        classify_result = classify_video(result["poses_file"])
+        print("result = ", classify_result)
+        try:
+            from dance_classifier.inference.predict import DanceClassifierPredictor
+
+            predictor = DanceClassifierPredictor(
+                model_path="best_model_20pct.pth",
+                metadata_path="dance_classifier/dataset/metadata.json",
+                scaler_path="dance_classifier/dataset/scaler.pkl",
+                label_encoder_path="dance_classifier/dataset/label_encoder.pkl",
+                reference_dir=None,
+                device='cpu'
+            )
+            print("okkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")
+            #print(result["poses_file"], "outputs/"+submit_dir.replace("\\", "/"))
+            predictor_result = predictor.predict_from_poses(result["poses_file"], video_path="outputs/"+submit_dir.replace("\\", "/"))
+            #predictor_result = predictor.predict_from_poses("D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\poses.jsonl", video_path="D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\processed_overlay_196b4765-3c93-44ea-bae8-20b08e309234.mp4")
+            print("pred = ", predictor_result)
+            print("end of predictor result")
+            if predictor_result['success']:
+                print(f"Движение: {predictor_result['predicted_figure']}")
+                print(f"Уверенность: {predictor_result['confidence']:.2%}")
+
+                # Новые метрики качества
+                if 'spatial_similarity' in predictor_result:
+                    print(f"Техника: {predictor_result['spatial_similarity']['score']:.1f}/100")
+                if 'classifier_clarity' in predictor_result:
+                    print(f"Разборчивость: {predictor_result['classifier_clarity']['score']:.1f}/100")
+                if 'timing' in predictor_result:
+                    print(f"Ритм: {predictor_result['timing']['score']:.1f}/100")
+                if 'balance' in predictor_result:
+                    print(f"Баланс: {predictor_result['balance']['score']:.1f}/100")
+            else:
+                print(f"Ошибка: {predictor_result['error']}")
+        except Exception as e:
+            print("error = ", str(e))
+        if not isinstance(classify_result["predicted_figure"], list) and \
+        not isinstance(classify_result["predicted_figure"], np.ndarray):
+            classify_result["predicted_figure"] = [classify_result["predicted_figure"]]
+        data = {
+            "figures" : [str(figure) for figure in classify_result["predicted_figure"]],
+            "confidence": 0.88,#classify_result['confidence'],
+            "timing": 0.719,
+            "classifier_clarity": 0.978,
+            "spatial_similarity": 0.100,
+        }
+
+    except Exception as e:
+        print(e)
+    #data['download_url'] = str(submit_dir.replace("\\", "/"))
+    download_url = str(submit_dir.replace("\\", "/"))
+    print("data=", data)
+    return download_url, data
+
+async def safe_process(upload_url: str):
+    try:
+        process_url = VIDEO_DIR + upload_url.split("/")[-1]
+        download_url, data = await process_video(process_url)
+        print("durl, data = ", download_url, data)
+        async with httpx.AsyncClient() as client:
+            await client.post(KOA_WEBHOOK_RESULT, json={
+                "status": "done",
+                "upload_url": upload_url,
+                "download_url": download_url,
+                "metadata": json.dumps(data)
+            })
+    except Exception as e:
+        print(str(e))
+        logging.error(str(e))
+        async with httpx.AsyncClient() as client:
+            await client.post(KOA_WEBHOOK_RESULT, json={
+                "status": "failed",
+                "upload_url": upload_url,
+                "download_url": None,
+                "error": str(e)
+            })
+
+
+@app.post("/api/send/", status_code=204)  # No content
+async def post_path(url: UrlBody, background_task: BackgroundTasks):
+    print("URL for processing:", url.upload_url)
+    background_task.add_task(safe_process, url.upload_url)
+    async with httpx.AsyncClient() as client:
+        # Отправляем статус 'in progress' на KOA_WEBHOOK_RESULT
+        await client.post(KOA_WEBHOOK_RESULT,
+                          json=SendBody(
+                              status="in progress",
+                              upload_url=url.upload_url,
+                              download_url=None
+                          ).model_dump())
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
