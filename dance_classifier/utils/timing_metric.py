@@ -57,84 +57,84 @@ def _load_audio_and_beats(
         try:
             y, sr = librosa.load(str(audio_path), sr=None, mono=True)
         except Exception as e:
-        # Если не получилось (проблема с audioread/ffmpeg), извлекаем аудио через subprocess
-        ffmpeg_path = shutil.which('ffmpeg')
-        if not ffmpeg_path:
-            raise RuntimeError(
-                "ffmpeg не найден в PATH. "
-                "Установите ffmpeg и перезапустите терминал."
-            ) from e
-        
-        # Извлекаем аудио во временный файл
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-            tmp_audio_path = tmp_file.name
-        
-        try:
-            # Сначала проверяем, есть ли аудио в видео
-            probe_cmd = [
-                ffmpeg_path,
-                '-i', str(audio_path),
-                '-show_streams',
-                '-select_streams', 'a',  # только аудио потоки
-                '-loglevel', 'error'
-            ]
-            
-            probe_result = subprocess.run(
-                probe_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            # Если нет аудио потоков, возвращаем ошибку
-            if 'codec_type=audio' not in probe_result.stdout:
+            # Если не получилось (проблема с audioread/ffmpeg), извлекаем аудио через subprocess
+            ffmpeg_path = shutil.which('ffmpeg')
+            if not ffmpeg_path:
                 raise RuntimeError(
-                    "В видео файле нет аудио потока. "
-                    "Метрика Timing не может быть вычислена."
+                    "ffmpeg не найден в PATH. "
+                    "Установите ffmpeg и перезапустите терминал."
                 ) from e
             
-            # Извлекаем аудио из видео через ffmpeg
-            cmd = [
-                ffmpeg_path,
-                '-i', str(audio_path),
-                '-vn',  # без видео
-                '-acodec', 'pcm_s16le',  # PCM 16-bit
-                '-ar', '22050',  # частота дискретизации
-                '-ac', '1',  # моно
-                '-y',  # перезаписать выходной файл
-                tmp_audio_path
-            ]
+            # Извлекаем аудио во временный файл
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_audio_path = tmp_file.name
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode != 0:
-                # Проверяем, может быть в видео просто нет аудио
-                if 'does not contain any stream' in result.stderr or 'no audio' in result.stderr.lower():
+            try:
+                # Сначала проверяем, есть ли аудио в видео
+                probe_cmd = [
+                    ffmpeg_path,
+                    '-i', str(audio_path),
+                    '-show_streams',
+                    '-select_streams', 'a',  # только аудио потоки
+                    '-loglevel', 'error'
+                ]
+                
+                probe_result = subprocess.run(
+                    probe_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                # Если нет аудио потоков, возвращаем ошибку
+                if 'codec_type=audio' not in probe_result.stdout:
                     raise RuntimeError(
                         "В видео файле нет аудио потока. "
                         "Метрика Timing не может быть вычислена."
                     ) from e
-                raise RuntimeError(
-                    f"Ошибка извлечения аудио через ffmpeg: {result.stderr}"
-                ) from e
-            
-            # Загружаем извлеченное аудио (подавляем предупреждения)
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=UserWarning, module='librosa')
-                warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
-                y, sr = librosa.load(tmp_audio_path, sr=None, mono=True)
-        finally:
-            # Удаляем временный файл
-            if os.path.exists(tmp_audio_path):
-                try:
-                    os.unlink(tmp_audio_path)
-                except:
-                    pass
+                
+                # Извлекаем аудио из видео через ffmpeg
+                cmd = [
+                    ffmpeg_path,
+                    '-i', str(audio_path),
+                    '-vn',  # без видео
+                    '-acodec', 'pcm_s16le',  # PCM 16-bit
+                    '-ar', '22050',  # частота дискретизации
+                    '-ac', '1',  # моно
+                    '-y',  # перезаписать выходной файл
+                    tmp_audio_path
+                ]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    # Проверяем, может быть в видео просто нет аудио
+                    if 'does not contain any stream' in result.stderr or 'no audio' in result.stderr.lower():
+                        raise RuntimeError(
+                            "В видео файле нет аудио потока. "
+                            "Метрика Timing не может быть вычислена."
+                        ) from e
+                    raise RuntimeError(
+                        f"Ошибка извлечения аудио через ffmpeg: {result.stderr}"
+                    ) from e
+                
+                # Загружаем извлеченное аудио (подавляем предупреждения)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', category=UserWarning, module='librosa')
+                    warnings.filterwarnings('ignore', category=FutureWarning, module='librosa')
+                    y, sr = librosa.load(tmp_audio_path, sr=None, mono=True)
+            finally:
+                # Удаляем временный файл
+                if os.path.exists(tmp_audio_path):
+                    try:
+                        os.unlink(tmp_audio_path)
+                    except:
+                        pass
     
     # Вычисляем биты (подавляем предупреждения)
     with warnings.catch_warnings():

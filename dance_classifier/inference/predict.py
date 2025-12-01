@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 import cv2
+from PIL import Image, ImageDraw, ImageFont
 
 # Разрешить загрузку sklearn классов
 try:
@@ -178,6 +179,16 @@ class DanceClassifierPredictor:
         Returns:
             (predicted_class, probabilities)
         """
+        # Проверяем размерность перед нормализацией
+        expected_features = self.scaler.mean_.shape[0]
+        if sequence.shape[1] != expected_features:
+            # Дополняем или обрезаем признаки
+            if sequence.shape[1] < expected_features:
+                padding = np.zeros((sequence.shape[0], expected_features - sequence.shape[1]))
+                sequence = np.concatenate([sequence, padding], axis=1)
+            elif sequence.shape[1] > expected_features:
+                sequence = sequence[:, :expected_features]
+        
         sequence_norm = self.scaler.transform(sequence)
         X = torch.FloatTensor(sequence_norm).unsqueeze(0).to(self.device)
         
@@ -185,8 +196,35 @@ class DanceClassifierPredictor:
             outputs = self.model(X)
             probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
         
-        predicted_idx = np.argmax(probs)
-        predicted_class = self.label_encoder.classes_[predicted_idx]
+        # Базовое предсказание по максимуму вероятности
+        classes = self.label_encoder.classes_
+        predicted_idx = int(np.argmax(probs))
+        predicted_class = classes[predicted_idx]
+        
+        # Специальная логика для класса "NotPerforming":
+        # если модель не уверена и даёт "NotPerforming", пробуем взять
+        # лучшую танцевальную фигуру.
+        if predicted_class == "NotPerforming":
+            top_prob = float(probs[predicted_idx])
+            
+            # Находим лучшую НЕ-NotPerforming фигуру
+            sorted_indices = np.argsort(probs)[::-1]
+            alt_idx = None
+            for idx in sorted_indices:
+                name = classes[int(idx)]
+                if name != "NotPerforming":
+                    alt_idx = int(idx)
+                    break
+            
+            if alt_idx is not None:
+                alt_prob = float(probs[alt_idx])
+                # Новое правило:
+                # Если модель выбрала NotPerforming, но уверенность в нём
+                # не очень высокая (< 0.7), то считаем, что нам важнее
+                # всё-таки определить танцевальную фигуру и берём лучшую альтернативу.
+                if top_prob < 0.70:
+                    predicted_idx = alt_idx
+                    predicted_class = classes[predicted_idx]
         
         return predicted_class, probs
     
@@ -297,7 +335,6 @@ class DanceClassifierPredictor:
             }
         
         # Извлекаем признаки через FeatureExtractor
-        print("3")
         try:
             # Проверяем структуру данных перед обработкой
             if not poses_data or 'frames' not in poses_data:
@@ -527,8 +564,6 @@ class DanceClassifierPredictor:
                     'posture': {'score': 0.0}
                 }
             
-            print("4")
-            
             # Создаем analyzed_ видео, если запрошено
             if create_analyzed_video and result.get('success', False):
                 analyzed_video_path = self._create_analyzed_video(
@@ -543,8 +578,18 @@ class DanceClassifierPredictor:
             return result
         except Exception as e:
             import traceback
-            error_msg = f"Ошибка при извлечении признаков: {str(e)}\n{traceback.format_exc()}"
-            print(f"ERROR: {error_msg}")
+            # Улучшаем сообщение об ошибке для фронтенда
+            error_str = str(e)
+            if "features" in error_str and "StandardScaler" in error_str:
+                # Ошибка размерности признаков
+                user_friendly_error = "Несоответствие размерности признаков. Проверьте версию модели и данных."
+            elif "expected an indented block" in error_str:
+                # Синтаксическая ошибка
+                user_friendly_error = "Внутренняя ошибка обработки. Обратитесь к разработчику."
+            else:
+                user_friendly_error = f"Ошибка обработки: {error_str}"
+            
+            print(f"ERROR: {error_str}")
             return {
                 'success': False,
                 'predicted_class': 'Unknown',
@@ -554,7 +599,7 @@ class DanceClassifierPredictor:
                     'figure': 'Unknown',
                     'confidence': 0.0
                 },
-                'error': error_msg,
+                'error': user_friendly_error,
                 'scores': {
                     'technique': {'score': 0.0, 'error': 'Feature extraction failed'},
                     'timing': {'score': 0.0, 'error': 'Feature extraction failed'},
@@ -805,6 +850,60 @@ class DanceClassifierPredictor:
             error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
             return {"error": error_msg}
     
+    def _put_text_ru(self, frame, text, position, font_scale=1.0, color=(255, 255, 255), thickness=2):
+        """
+        Рисует русский текст на кадре OpenCV через PIL.
+        
+        Args:
+            frame: numpy array (BGR)
+            text: текст для отображения
+            position: (x, y) координаты
+            font_scale: масштаб шрифта
+            color: цвет (B, G, R)
+            thickness: толщина шрифта (не используется в PIL, но оставлен для совместимости)
+        """
+        try:
+            # Конвертируем BGR в RGB для PIL
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_image = Image.fromarray(frame_rgb)
+            draw = ImageDraw.Draw(pil_image)
+            
+            # Пробуем загрузить системный шрифт с поддержкой кириллицы
+            try:
+                # Windows шрифты
+                font_paths = [
+                    "C:/Windows/Fonts/arial.ttf",
+                    "C:/Windows/Fonts/calibri.ttf",
+                    "C:/Windows/Fonts/tahoma.ttf",
+                ]
+                font = None
+                for fp in font_paths:
+                    if Path(fp).exists():
+                        # Размер шрифта зависит от scale
+                        font_size = int(20 * font_scale)
+                        font = ImageFont.truetype(fp, font_size)
+                        break
+                
+                if font is None:
+                    # Fallback на стандартный шрифт
+                    font = ImageFont.load_default()
+            except:
+                font = ImageFont.load_default()
+            
+            # Конвертируем цвет из BGR в RGB
+            color_rgb = (color[2], color[1], color[0])
+            
+            # Рисуем текст
+            draw.text(position, text, fill=color_rgb, font=font)
+            
+            # Конвертируем обратно в BGR
+            frame_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            return frame_bgr
+        except Exception as e:
+            # Если что-то пошло не так, используем стандартный cv2.putText (будет ??? для русских)
+            cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+            return frame
+    
     def _create_analyzed_video(
         self,
         result: Dict,
@@ -869,6 +968,78 @@ class DanceClassifierPredictor:
             # Извлекаем scores
             scores = result.get('scores', {})
             
+            # Загружаем данные об ошибках для отображения на кадрах
+            error_segments = {}
+            frame_errors = {}  # frame_idx -> список ошибок
+            
+            # Balance errors
+            if 'balance' in result and isinstance(result['balance'], dict):
+                balance_data = result['balance']
+                if 'error_segments' in balance_data:
+                    for seg in balance_data['error_segments']:
+                        start_frame = int(seg.get('start_idx', 0))
+                        end_frame = int(seg.get('end_idx', start_frame))
+                        tilt = seg.get('mean_tilt_deg', 0)
+                        for f in range(start_frame, end_frame + 1):
+                            if f not in frame_errors:
+                                frame_errors[f] = []
+                            frame_errors[f].append({
+                                'type': 'balance',
+                                'tilt_deg': tilt,
+                                'message': f'Tilt: {tilt:.1f}°'
+                            })
+            
+            # Timing errors
+            if 'timing' in result and isinstance(result['timing'], dict):
+                timing_data = result['timing']
+                if 'error_segments' in timing_data:
+                    for seg in timing_data['error_segments']:
+                        start_time = seg.get('start_time', 0)
+                        end_time = seg.get('end_time', start_time)
+                        offset = seg.get('mean_abs_offset', 0)
+                        # Конвертируем время в кадры (предполагаем 25 FPS)
+                        start_frame = int(start_time * fps)
+                        end_frame = int(end_time * fps)
+                        for f in range(start_frame, end_frame + 1):
+                            if f not in frame_errors:
+                                frame_errors[f] = []
+                            frame_errors[f].append({
+                                'type': 'timing',
+                                'offset': offset,
+                                'message': f'Timing: {offset*1000:.0f}ms off'
+                            })
+            
+            # Spatial similarity errors
+            if 'spatial_similarity' in result and isinstance(result['spatial_similarity'], dict):
+                spatial_data = result['spatial_similarity']
+                if 'error_segments' in spatial_data:
+                    for seg in spatial_data['error_segments']:
+                        start_time = seg.get('start_time', 0)
+                        end_time = seg.get('end_time', start_time)
+                        distance = seg.get('mean_distance', 0)
+                        start_frame = int(start_time * fps)
+                        end_frame = int(end_time * fps)
+                        for f in range(start_frame, end_frame + 1):
+                            if f not in frame_errors:
+                                frame_errors[f] = []
+                            frame_errors[f].append({
+                                'type': 'technique',
+                                'distance': distance,
+                                'message': f'Deviation: {distance:.1f}'
+                            })
+            
+            # Загружаем poses.jsonl для получения данных о позах (если нужно)
+            poses_data_by_frame = {}
+            if poses_json_path and Path(poses_json_path).exists():
+                try:
+                    with open(poses_json_path, 'r') as f:
+                        for line_idx, line in enumerate(f):
+                            pose = json.loads(line)
+                            if pose.get('valid', True):
+                                poses_data_by_frame[line_idx] = pose
+                except:
+                    pass  # Если не удалось загрузить, продолжаем без данных о позах
+            
             # Открываем overlay видео
             cap = cv2.VideoCapture(str(overlay_path))
             if not cap.isOpened():
@@ -906,56 +1077,97 @@ class DanceClassifierPredictor:
                 
                 h, w = frame.shape[:2]
                 
-                # ===== ВЕРХНЯЯ ПАНЕЛЬ =====
+                # ===== ВЕРХНЯЯ ПАНЕЛЬ (НИЖЕ, ЧТОБЫ НЕ ПРИЖИМАТЬСЯ К ВЕРХУ) =====
                 overlay = frame.copy()
-                cv2.rectangle(overlay, (0, 0), (w, 260), (0, 0, 0), -1)
+                top_panel_h = 120
+                cv2.rectangle(overlay, (0, 40), (w, 40 + top_panel_h), (0, 0, 0), -1)
                 frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
                 
-                # Название фигуры
-                cv2.putText(frame, f"FIGURE: {figure}", (120, 200),
-                           cv2.FONT_HERSHEY_DUPLEX, 1.8, (0, 255, 255), 4)
+                # FIGURE (опускаем немного вниз)
+                cv2.putText(
+                    frame,
+                    f"FIGURE: {figure}",
+                    (40, 90),
+                    cv2.FONT_HERSHEY_DUPLEX,
+                    1.2,
+                    (0, 255, 255),
+                    3,
+                )
                 
-                # Уверенность
-                conf_color = (0, 255, 0) if confidence >= 70 else (0, 165, 255) if confidence >= 50 else (0, 0, 255)
-                cv2.putText(frame, f"CONFIDENCE: {confidence:.1f}%", (120, 240),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, conf_color, 3)
+                # CONFIDENCE (чуть ниже FIGURE)
+                conf_color = (
+                    (0, 255, 0)
+                    if confidence >= 70
+                    else (0, 165, 255)
+                    if confidence >= 50
+                    else (0, 0, 255)
+                )
+                cv2.putText(
+                    frame,
+                    f"CONFIDENCE: {confidence:.1f}%",
+                    (40, 120),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    conf_color,
+                    2,
+                )
                 
-                # ===== ПРАВАЯ ПАНЕЛЬ - МЕТРИКИ =====
-                panel_w = 360
-                panel_h = 450
-                panel_x = w - panel_w - 400
+                # ===== LEFT PANEL - QUALITY METRICS (ENGLISH) =====
+                # Compact block on the left, ещё ниже, чтобы не пересекаться с FIGURE/CONFIDENCE
+                panel_w = 320
+                panel_h = 220
+                panel_x = 20
                 panel_y = 180
                 
                 overlay2 = frame.copy()
                 cv2.rectangle(overlay2, (panel_x, panel_y), (panel_x + panel_w, panel_y + panel_h), (30, 30, 30), -1)
                 frame = cv2.addWeighted(overlay2, 0.75, frame, 0.25, 0)
                 
-                # Заголовок
-                cv2.putText(frame, "QUALITY METRICS", (panel_x + 15, panel_y + 40),
-                           cv2.FONT_HERSHEY_DUPLEX, 1.3, (255, 255, 255), 2)
+                # Header
+                cv2.putText(
+                    frame,
+                    "QUALITY METRICS",
+                    (panel_x + 15, panel_y + 35),
+                    cv2.FONT_HERSHEY_DUPLEX,
+                    0.9,
+                    (255, 255, 255),
+                    2,
+                )
                 
                 # Линия
                 cv2.line(frame, (panel_x + 15, panel_y + 55), (panel_x + panel_w - 15, panel_y + 55), (200, 200, 200), 2)
                 
-                # Метрики
-                y_pos = panel_y + 90
+                # Metrics
+                y_pos = panel_y + 80
                 for name, score in metrics_list:
-                    # Цвет
+                    # Color and text hint (EN)
                     if score >= 70:
                         color = (0, 255, 0)  # Зеленый
+                        hint = "Good"
                     elif score >= 50:
                         color = (0, 165, 255)  # Оранжевый
+                        hint = "Needs work"
                     else:
                         color = (0, 0, 255)  # Красный
+                        hint = "Critical"
                     
-                    # Название
-                    cv2.putText(frame, name, (panel_x + 15, y_pos),
-                               cv2.FONT_HERSHEY_SIMPLEX, 1.3, (220, 220, 220), 2)
+                    display_name = name  # Use original English names
+                    
+                    # Metric name
+                    cv2.putText(
+                        frame,
+                        display_name,
+                        (panel_x + 15, y_pos),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (220, 220, 220),
+                        2,
+                    )
                     
                     # Прогресс-бар
                     bar_x = panel_x + 15
-                    bar_y = y_pos + 15
-                    bar_w = 180
+                    bar_y = y_pos + 12
+                    bar_w = 170
                     bar_h = 28
                     
                     # Фон
@@ -967,18 +1179,24 @@ class DanceClassifierPredictor:
                     if fill_w > 0:
                         cv2.rectangle(frame, (bar_x + 2, bar_y + 2), (bar_x + fill_w - 2, bar_y + bar_h - 2), color, -1)
                     
-                    # Значение
+                    # Numeric value (large)
                     score_text = f"{score:.1f}"
-                    text_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+                    text_size = cv2.getTextSize(score_text, cv2.FONT_HERSHEY_SIMPLEX, 1.4, 3)[0]
                     text_x = bar_x + bar_w + 10
                     text_y = bar_y + bar_h // 2 + text_size[1] // 2
                     max_x = panel_x + panel_w - 10
                     if text_x + text_size[0] > max_x:
                         text_x = max_x - text_size[0] - 5
                     cv2.putText(frame, score_text, (text_x, text_y),
-                               cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                               cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 3)
                     
-                    y_pos += 70
+                    # Подсказка под значением (маленькая строка под блоком)
+                    hint_x = bar_x
+                    hint_y = bar_y + bar_h + 18
+                    frame = self._put_text_ru(frame, hint, (hint_x, hint_y),
+                                             font_scale=0.6, color=color, thickness=1)
+                    
+                    y_pos += 55
                 
                 # ===== НИЖНЯЯ ПАНЕЛЬ - ПРОГРЕСС =====
                 overlay3 = frame.copy()
@@ -998,6 +1216,221 @@ class DanceClassifierPredictor:
                 time_text = f"{frame_idx}/{total_frames} frames"
                 cv2.putText(frame, time_text, (20, h-10),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+                
+                # ===== ОТОБРАЖЕНИЕ ОШИБОК НА КАДРЕ =====
+                if frame_idx in frame_errors:
+                    errors = frame_errors[frame_idx]
+                    # Показываем ошибки компактно внизу слева, чтобы не мешать танцору
+                    error_y = h - 90
+                    
+                    for error in errors:
+                        # Цвет в зависимости от типа ошибки
+                        if error['type'] == 'balance':
+                            error_color = (0, 0, 255)  # Красный для баланса
+                            error_label = "БАЛАНС"
+                        elif error['type'] == 'timing':
+                            error_color = (0, 165, 255)  # Оранжевый для тайминга
+                            error_label = "ТАЙМИНГ"
+                        else:
+                            error_color = (255, 0, 255)  # Пурпурный для техники
+                            error_label = "ТЕХНИКА"
+                        
+                        # Фон для текста ошибки
+                        error_text = f"{error_label}: {error['message']}"
+                        text_size = cv2.getTextSize(error_text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)[0]
+                        text_x = 20
+                        text_y = error_y
+                        
+                        # Полупрозрачный фон
+                        overlay_error = frame.copy()
+                        cv2.rectangle(overlay_error, 
+                                    (text_x - 5, text_y - text_size[1] - 5),
+                                    (text_x + text_size[0] + 5, text_y + 5),
+                                    (0, 0, 0), -1)
+                        frame = cv2.addWeighted(overlay_error, 0.7, frame, 0.3, 0)
+                        
+                        # Текст ошибки (русский текст)
+                        frame = self._put_text_ru(frame, error_text, (text_x, text_y),
+                                                  font_scale=1.0, color=error_color, thickness=2)
+                        
+                        error_y += 35
+                
+                # ===== ВИЗУАЛИЗАЦИЯ ОШИБОК НА СКЕЛЕТЕ ТАНЦОРА =====
+                if frame_idx in poses_data_by_frame:
+                    pose = poses_data_by_frame[frame_idx]
+                    keypoints = pose.get('keypoints', [])
+                    frame_width = pose.get('width', w)
+                    frame_height = pose.get('height', h)
+                    
+                    if len(keypoints) >= 17:
+                        # YOLO COCO порядок: 0=nose, 1-4=eyes/ears, 5-6=shoulders, 7-8=elbows,
+                        # 9-10=wrists, 11-12=hips, 13-14=knees, 15-16=ankles
+                        try:
+                            # Получаем координаты ключевых точек
+                            left_shoulder = keypoints[5] if len(keypoints) > 5 and len(keypoints[5]) >= 2 else None
+                            right_shoulder = keypoints[6] if len(keypoints) > 6 and len(keypoints[6]) >= 2 else None
+                            left_hip = keypoints[11] if len(keypoints) > 11 and len(keypoints[11]) >= 2 else None
+                            right_hip = keypoints[12] if len(keypoints) > 12 and len(keypoints[12]) >= 2 else None
+                            left_ankle = keypoints[15] if len(keypoints) > 15 and len(keypoints[15]) >= 2 else None
+                            right_ankle = keypoints[16] if len(keypoints) > 16 and len(keypoints[16]) >= 2 else None
+                            
+                            # Конвертируем координаты в пиксели кадра
+                            def to_pixel(kp, frame_w, frame_h, video_w, video_h):
+                                if kp is None or len(kp) < 2:
+                                    return None
+                                # Если координаты нормализованные (0-1), конвертируем
+                                if kp[0] <= 1.0 and kp[1] <= 1.0:
+                                    x = int(kp[0] * video_w)
+                                    y = int(kp[1] * video_h)
+                                else:
+                                    # Если уже в пикселях (как в poses.jsonl), масштабируем
+                                    # poses.jsonl содержит координаты в пикселях исходного видео
+                                    scale_x = video_w / frame_w if frame_w > 0 else 1.0
+                                    scale_y = video_h / frame_h if frame_h > 0 else 1.0
+                                    x = int(kp[0] * scale_x)
+                                    y = int(kp[1] * scale_y)
+                                return (x, y)
+                            
+                            # Проверяем ошибки баланса
+                            has_balance_error = frame_idx in frame_errors and any(e['type'] == 'balance' for e in frame_errors[frame_idx])
+                            
+                            if left_shoulder and right_shoulder and left_hip and right_hip:
+                                # Конвертируем координаты
+                                ls = to_pixel(left_shoulder, frame_width, frame_height, w, h)
+                                rs = to_pixel(right_shoulder, frame_width, frame_height, w, h)
+                                lh = to_pixel(left_hip, frame_width, frame_height, w, h)
+                                rh = to_pixel(right_hip, frame_width, frame_height, w, h)
+                                
+                                if ls and rs and lh and rh:
+                                    # Проверяем, что координаты в пределах кадра
+                                    if (0 <= ls[0] < w and 0 <= ls[1] < h and
+                                        0 <= rs[0] < w and 0 <= rs[1] < h and
+                                        0 <= lh[0] < w and 0 <= lh[1] < h and
+                                        0 <= rh[0] < w and 0 <= rh[1] < h):
+                                        
+                                        # Вычисляем центр плеч и бедер
+                                        shoulder_center = ((ls[0] + rs[0]) // 2, (ls[1] + rs[1]) // 2)
+                                        hip_center = ((lh[0] + rh[0]) // 2, (lh[1] + rh[1]) // 2)
+                                        
+                                        # Вычисляем угол наклона корпуса
+                                        dx = shoulder_center[0] - hip_center[0]
+                                        dy = abs(shoulder_center[1] - hip_center[1])
+                                        if dy > 0:
+                                            tilt_deg = np.arctan(abs(dx) / dy) * 180 / np.pi
+                                            
+                                            # Рисуем линию наклона корпуса (всегда, если наклон > 3 градуса для видимости)
+                                            if has_balance_error or tilt_deg > 3:
+                                                # Цвет линии зависит от степени наклона
+                                                if tilt_deg > 15:
+                                                    line_color = (0, 0, 255)  # Красный - критический наклон
+                                                    line_thickness = 4
+                                                elif tilt_deg > 10:
+                                                    line_color = (0, 100, 255)  # Оранжево-красный
+                                                    line_thickness = 3
+                                                else:
+                                                    line_color = (0, 165, 255)  # Оранжевый
+                                                    line_thickness = 2
+                                                
+                                                # Рисуем линию от бедер к плечам (показывает наклон)
+                                                cv2.line(frame, hip_center, shoulder_center, line_color, line_thickness)
+                                                
+                                                # Рисуем перпендикулярную линию (показывает отклонение от вертикали)
+                                                vertical_x = hip_center[0]
+                                                vertical_y = hip_center[1] - 50  # Вертикальная линия вверх
+                                                cv2.line(frame, hip_center, (vertical_x, vertical_y), (100, 100, 100), 1)
+                                                
+                                                # Текст с углом наклона и подсказкой рядом с линией
+                                                if tilt_deg > 15:
+                                                    tilt_text = f"{tilt_deg:.1f}° (CRITICAL!)"
+                                                    hint_text = "Fix posture!"
+                                                elif tilt_deg > 10:
+                                                    tilt_text = f"{tilt_deg:.1f}° (HIGH)"
+                                                    hint_text = "Watch balance"
+                                                else:
+                                                    tilt_text = f"{tilt_deg:.1f}°"
+                                                    hint_text = "OK"
+                                                
+                                                text_x = shoulder_center[0] + 10
+                                                text_y = shoulder_center[1] - 10
+                                                
+                                                # Фон для текста
+                                                text_bg = frame.copy()
+                                                text_size = cv2.getTextSize(tilt_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
+                                                cv2.rectangle(text_bg,
+                                                             (text_x - 5, text_y - text_size[1] - 5),
+                                                             (text_x + text_size[0] + 5, text_y + 5),
+                                                             (0, 0, 0), -1)
+                                                frame = cv2.addWeighted(text_bg, 0.7, frame, 0.3, 0)
+                                                
+                                                cv2.putText(frame, tilt_text, (text_x, text_y),
+                                                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, line_color, 2)
+                                                
+                                                # Подсказка ниже
+                                                if tilt_deg > 10:
+                                                    hint_y = text_y + 25
+                                                    hint_size = cv2.getTextSize(hint_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)[0]
+                                                    hint_bg = frame.copy()
+                                                    cv2.rectangle(hint_bg,
+                                                                 (text_x - 5, hint_y - hint_size[1] - 5),
+                                                                 (text_x + hint_size[0] + 5, hint_y + 5),
+                                                                 (0, 0, 0), -1)
+                                                    frame = cv2.addWeighted(hint_bg, 0.7, frame, 0.3, 0)
+                                                    cv2.putText(frame, hint_text, (text_x, hint_y),
+                                                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, line_color, 1)
+                                                
+                                                # Выделяем проблемные суставы (плечи и бедра)
+                                                cv2.circle(frame, ls, 8, line_color, -1)
+                                                cv2.circle(frame, rs, 8, line_color, -1)
+                                                cv2.circle(frame, lh, 8, line_color, -1)
+                                                cv2.circle(frame, rh, 8, line_color, -1)
+                                                
+                                                # Обводим проблемные суставы
+                                                cv2.circle(frame, ls, 10, line_color, 2)
+                                                cv2.circle(frame, rs, 10, line_color, 2)
+                                                cv2.circle(frame, lh, 10, line_color, 2)
+                                                cv2.circle(frame, rh, 10, line_color, 2)
+                            
+                            # Проверяем ошибки тайминга (выделяем ноги)
+                            has_timing_error = frame_idx in frame_errors and any(e['type'] == 'timing' for e in frame_errors[frame_idx])
+                            
+                            if has_timing_error and left_ankle and right_ankle:
+                                la = to_pixel(left_ankle, frame_width, frame_height, w, h)
+                                ra = to_pixel(right_ankle, frame_width, frame_height, w, h)
+                                
+                                if la and ra:
+                                    # Выделяем лодыжки при ошибках тайминга
+                                    timing_color = (0, 165, 255)  # Оранжевый
+                                    cv2.circle(frame, la, 12, timing_color, -1)
+                                    cv2.circle(frame, ra, 12, timing_color, -1)
+                                    cv2.circle(frame, la, 15, timing_color, 3)
+                                    cv2.circle(frame, ra, 15, timing_color, 3)
+                                    
+                                    # Рисуем стрелку вверх/вниз (показывает, что шаг не в такт)
+                                    arrow_length = 30
+                                    cv2.arrowedLine(frame, 
+                                                   (la[0], la[1] - arrow_length),
+                                                   la,
+                                                   timing_color, 3, tipLength=0.3)
+                                    cv2.arrowedLine(frame,
+                                                   (ra[0], ra[1] - arrow_length),
+                                                   ra,
+                                                   timing_color, 3, tipLength=0.3)
+                            
+                            # Проверяем ошибки техники (выделяем все тело)
+                            has_technique_error = frame_idx in frame_errors and any(e['type'] == 'technique' for e in frame_errors[frame_idx])
+                            
+                            if has_technique_error:
+                                # Выделяем все видимые keypoints при ошибках техники
+                                technique_color = (255, 0, 255)  # Пурпурный
+                                for i, kp in enumerate(keypoints):
+                                    if len(kp) >= 2:
+                                        kp_pixel = to_pixel(kp, frame_width, frame_height, w, h)
+                                        if kp_pixel:
+                                            # Увеличиваем размер точек при ошибках
+                                            cv2.circle(frame, kp_pixel, 6, technique_color, -1)
+                                            cv2.circle(frame, kp_pixel, 8, technique_color, 2)
+                        except Exception as e:
+                            pass  # Если не удалось визуализировать, пропускаем
                 
                 out.write(frame)
                 frame_idx += 1
