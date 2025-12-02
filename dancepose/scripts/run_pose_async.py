@@ -166,20 +166,20 @@ async def demo():
     
     if videos:
         test_video = videos[0]
-        print(f"📹 Обрабатываем: {test_video.name}")
+        print(f"Обрабатываем: {test_video.name}")
         
         result = await run(str(test_video))
         
         if result["success"]:
-            print(f"\n✅ Успешно обработано!")
+            print(f"\nУспешно обработано!")
             print(f"   Видео: {result['video_name']}")
             print(f"   Позы: {result['poses_file']}")
             print(f"   Наложение: {result['overlay_file']}")
             print(f"   Папка: {result['output_dir']}")
         else:
-            print(f"\n❌ Ошибка: {result.get('error', 'Неизвестная ошибка')}")
+            print(f"\nОшибка: {result.get('error', 'Неизвестная ошибка')}")
     else:
-        print("⚠️ Не найдено видео для обработки")
+        print("Не найдено видео для обработки")
         print(f"   Проверьте папку: {video_dir}")
     
     # ПРИМЕР 2: Параллельная обработка нескольких видео
@@ -189,17 +189,17 @@ async def demo():
         print("=" * 60)
         
         test_videos = [str(v) for v in videos[:2]]
-        print(f"📹 Обрабатываем {len(test_videos)} видео параллельно...")
+        print(f"Обрабатываем {len(test_videos)} видео параллельно...")
         
         import time
         start = time.time()
         results = await process_multiple_videos(test_videos, "outputs_async_demo")
         elapsed = time.time() - start
         
-        print(f"\n⏱️ Обработка заняла {elapsed:.1f} секунд")
+        print(f"\nОбработка заняла {elapsed:.1f} секунд")
         print("\nРезультаты:")
         for i, res in enumerate(results, 1):
-            status = "✅ Успех" if res["success"] else "❌ Ошибка"
+            status = "Успех" if res["success"] else "Ошибка"
             print(f"  {i}. {res['video_name']}: {status}")
             if not res["success"]:
                 print(f"     Причина: {res.get('error', 'Неизвестно')}")
@@ -208,3 +208,9 @@ async def demo():
 if __name__ == "__main__":
     # Запуск демо
     asyncio.run(demo())
+
+
+
+
+
+

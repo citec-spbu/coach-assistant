@@ -1,7 +1,10 @@
 # Конфигурация обучения классификатора танцевальных фигур
 
 # Тип модели: 'gru', 'tcn', 'hybrid'
-model_type: 'hybrid'
+model_type: 'gru'
+
+# Путь к pretrained checkpoint для fine-tuning (если None - обучение с нуля)
+pretrained_checkpoint: 'best_model_20pct.pth'
 
 # Параметры модели
 model:
@@ -21,8 +24,8 @@ model:
 
 # Параметры обучения
 batch_size: 16
-num_epochs: 50
-learning_rate: 0.001
+num_epochs: 20  # Для fine-tuning с взвешиванием классов (увеличено для лучшей балансировки)
+learning_rate: 0.0001  # Уменьшенный LR для fine-tuning (было 0.001)
 weight_decay: 0.0001
 
 # Optimizer: 'adam' или 'sgd'
@@ -39,10 +42,10 @@ clip_grad: true
 max_grad_norm: 1.0
 
 # Early stopping
-early_stopping_patience: 15
+early_stopping_patience: 7  # Для fine-tuning с взвешиванием (увеличено, чтобы дать больше времени на адаптацию)
 
 # Сохранение
-save_every: 10  # Сохранять checkpoint каждые N epochs
+save_every: 5  # Сохранять checkpoint каждые N epochs
 
 # Seed для воспроизводимости
 seed: 42
