@@ -221,9 +221,9 @@ onMounted(() => {
     analysisResult.value = {
       overall: Math.round(result.confidence * 100),
       timing: Math.round(result.timing * 100),
-      balance: Math.round(result.balance * 100),
-      classifier_clarity: Math.round(result.classifier_clarity * 100),
-      spatial_similarity: Math.round(result.spatial_similarity * 100),
+      balance: Math.round(result.balance),
+      classifier_clarity: Math.round(result.classifier_clarity),
+      spatial_similarity: Math.round(result.spatial_similarity),
       feedback: [getFigure(result.figures)]
     };
 

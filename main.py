@@ -112,9 +112,9 @@ async def process_video(path: str):
         model_result = predictor.predict_from_poses(result["poses_file"])
         print(model_result['predicted_figure'])  # "Fan"
         """
-        from use_classifier import classify_video
-        classify_result = classify_video(result["poses_file"])
-        print("result = ", classify_result)
+        #from use_classifier import classify_video
+        #classify_result = classify_video(result["poses_file"])
+        #print("result = ", classify_result)
         try:
             from dance_classifier.inference.predict import DanceClassifierPredictor
 
@@ -126,12 +126,10 @@ async def process_video(path: str):
                 reference_dir=None,
                 device='cpu'
             )
-            print("okkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")
-            #print(result["poses_file"], "outputs/"+submit_dir.replace("\\", "/"))
+
             predictor_result = predictor.predict_from_poses(result["poses_file"], video_path="outputs/"+submit_dir.replace("\\", "/"))
-            #predictor_result = predictor.predict_from_poses("D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\poses.jsonl", video_path="D:\\coach-assistant\\new_ui\\outputs\\196b4765-3c93-44ea-bae8-20b08e309234\\processed_overlay_196b4765-3c93-44ea-bae8-20b08e309234.mp4")
-            print("pred = ", predictor_result)
-            print("end of predictor result")
+
+            print("predictor_result:", predictor_result)
             if predictor_result['success']:
                 print(f"Движение: {predictor_result['predicted_figure']}")
                 print(f"Уверенность: {predictor_result['confidence']:.2%}")
@@ -149,20 +147,20 @@ async def process_video(path: str):
                 print(f"Ошибка: {predictor_result['error']}")
         except Exception as e:
             print("error = ", str(e))
-        if not isinstance(classify_result["predicted_figure"], list) and \
-        not isinstance(classify_result["predicted_figure"], np.ndarray):
-            classify_result["predicted_figure"] = [classify_result["predicted_figure"]]
+        if not isinstance(predictor_result["predicted_figure"], list) and \
+        not isinstance(predictor_result["predicted_figure"], np.ndarray):
+            predictor_result["predicted_figure"] = [predictor_result["predicted_figure"]]
         data = {
-            "figures" : [str(figure) for figure in classify_result["predicted_figure"]],
-            "confidence": 0.88,#classify_result['confidence'],
-            "timing": 0.719,
-            "classifier_clarity": 0.978,
-            "spatial_similarity": 0.100,
+            "figures": [str(figure) for figure in predictor_result["predicted_figure"]],
+            "confidence": predictor_result['confidence'],
+            #"timing": predictor_result['timing']['score'],
+            "classifier_clarity": predictor_result['classifier_clarity']['score'],
+            "spatial_similarity": predictor_result['spatial_similarity']['score'],
+            "balance": predictor_result['balance']['score']
         }
 
     except Exception as e:
         print(e)
-    #data['download_url'] = str(submit_dir.replace("\\", "/"))
     download_url = str(submit_dir.replace("\\", "/"))
     print("data=", data)
     return download_url, data
