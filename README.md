@@ -111,3 +111,22 @@ python training/train.py --config training/config.yaml
 Ссылка: https://cloud.mail.ru/public/DG9E/EuZWkp6gn
 
 Эталонные траектории уже включены в репозиторий: `dance_classifier/reference_trajectories/`
+
+## Как все запустить?
+Подготовка окружения
+Установи Node.js версии 20+ (как указано в package.json) и npm с официального сайта.​
+Установи Python 3.10-3.13 и создай виртуальное окружение в папке проекта.​
+Установи FFmpeg для Windows.
+'''bash
+# 1. Установить зависимости
+npm install
+
+# 2. В одном терминале — Node‑сервер
+node server.cjs
+
+# 3. Во втором терминале — Python‑бэкенд (анализ видео)
+py main.py          # или python main.py, если так настроено окружение
+
+# 4. В третьем терминале — фронтенд
+npm run dev
+'''
