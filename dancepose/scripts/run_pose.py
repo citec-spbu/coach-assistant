@@ -1,5 +1,6 @@
 import os, cv2, yaml, math
 import numpy as np
+import torch
 from pathlib import Path
 from src.utils.io_utils import ensure_dir, JsonlWriter, SimpleLogger
 from src.inference.pose_infer import PoseExtractor
@@ -25,11 +26,12 @@ def main(cfg_path: str = None, video_path: str = None, output_dir: str = None):
         out_dir = Path(output_dir)
         # Создаём минимальный конфиг с дефолтными значениями
         # Принудительно используем CPU (безопасный вариант)
+        device = "0" if torch.cuda.is_available() else "cpu"
         cfg = {
             "video_path": video_path,
             "output_dir": output_dir,
             "model_name": "yolov8m-pose.pt",
-            "device": "cpu",  # Всегда используем CPU
+            "device": device,  # Всегда используем CPU
             "imgsz": 640,
             "conf": 0.25,
             "iou": 0.5,
@@ -75,7 +77,7 @@ def main(cfg_path: str = None, video_path: str = None, output_dir: str = None):
         vid_stride=int(cfg.get("vid_stride", 1)),
     )
 
-    print(f"current device: cpu")
+    print(f"current device: {cfg.get('device')}")
 
     jsonl = JsonlWriter(out_dir / "poses.jsonl")
 
