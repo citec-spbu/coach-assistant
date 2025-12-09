@@ -196,11 +196,12 @@ class DanceClassifierPredictor:
             outputs = self.model(X)
             probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
         
-        # Базовое предсказание по максимуму вероятности
         classes = self.label_encoder.classes_
         predicted_idx = int(np.argmax(probs))
         predicted_class = classes[predicted_idx]
         
+        # Никаких дополнительных «подмен» NotPerforming на другие фигуры.
+        # Фронтенд получает ровно то, что модель действительно предсказала.
         # Специальная логика для класса "NotPerforming":
         # если модель не уверена и даёт "NotPerforming", пробуем взять
         # лучшую танцевальную фигуру.
@@ -1470,8 +1471,12 @@ def main():
     dance_classifier_root = current_file.parent.parent
     # Модель может быть в основной папке coach-assistant
     main_coach_dir = Path(r"C:\Users\1\!PYTHON_DZ\coach-assistant\dance_classifier")
-    # Используем best_model_20pct.pth (единообразно)
-    if (main_coach_dir / "best_model_20pct.pth").exists():
+    # Приоритет: сначала finetuned модель, потом обычная
+    if (main_coach_dir / "best_model_20pct_finetuned.pth").exists():
+        model_path = main_coach_dir / "best_model_20pct_finetuned.pth"
+        print("Используется дообученная модель: best_model_20pct_finetuned.pth")
+    elif (main_coach_dir / "best_model_20pct.pth").exists():
+
         model_path = main_coach_dir / "best_model_20pct.pth"
     elif (main_coach_dir / "best_model_20pct_adapted.pth").exists():
         # Fallback на adapted версию, если основной нет

@@ -111,7 +111,6 @@ python training/train.py --config training/config.yaml
 Ссылка: https://cloud.mail.ru/public/DG9E/EuZWkp6gn
 
 Эталонные траектории уже включены в репозиторий: `dance_classifier/reference_trajectories/`
-
 ## Как все запустить?
 
 Подготовка окружения
