@@ -15,6 +15,9 @@ dist/
 *.h5
 *.pb
 
+# НЕ игнорируем label_encoder.pkl - он нужен!
+# *.pkl
+
 # Данные
 outputs/
 датасет/
@@ -75,3 +78,9 @@ analysis_summary.json
 *.bak
 *.swp
 .DS_Store
+
+
+
+
+
+

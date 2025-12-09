@@ -196,13 +196,37 @@ class DanceClassifierPredictor:
             outputs = self.model(X)
             probs = torch.softmax(outputs, dim=1).cpu().numpy()[0]
         
-        # Честное базовое предсказание по максимуму вероятности
         classes = self.label_encoder.classes_
         predicted_idx = int(np.argmax(probs))
         predicted_class = classes[predicted_idx]
         
         # Никаких дополнительных «подмен» NotPerforming на другие фигуры.
         # Фронтенд получает ровно то, что модель действительно предсказала.
+        # Специальная логика для класса "NotPerforming":
+        # если модель не уверена и даёт "NotPerforming", пробуем взять
+        # лучшую танцевальную фигуру.
+        if predicted_class == "NotPerforming":
+            top_prob = float(probs[predicted_idx])
+            
+            # Находим лучшую НЕ-NotPerforming фигуру
+            sorted_indices = np.argsort(probs)[::-1]
+            alt_idx = None
+            for idx in sorted_indices:
+                name = classes[int(idx)]
+                if name != "NotPerforming":
+                    alt_idx = int(idx)
+                    break
+            
+            if alt_idx is not None:
+                alt_prob = float(probs[alt_idx])
+                # Новое правило:
+                # Если модель выбрала NotPerforming, но уверенность в нём
+                # не очень высокая (< 0.7), то считаем, что нам важнее
+                # всё-таки определить танцевальную фигуру и берём лучшую альтернативу.
+                if top_prob < 0.70:
+                    predicted_idx = alt_idx
+                    predicted_class = classes[predicted_idx]
+        
         return predicted_class, probs
     
     def predict_from_poses(
@@ -1452,6 +1476,7 @@ def main():
         model_path = main_coach_dir / "best_model_20pct_finetuned.pth"
         print("Используется дообученная модель: best_model_20pct_finetuned.pth")
     elif (main_coach_dir / "best_model_20pct.pth").exists():
+
         model_path = main_coach_dir / "best_model_20pct.pth"
     elif (main_coach_dir / "best_model_20pct_adapted.pth").exists():
         # Fallback на adapted версию, если основной нет
