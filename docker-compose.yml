@@ -1,0 +1,31 @@
+services:
+  backend-py:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+
+  api-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.api-node
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    depends_on:
+      - backend-py
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+    depends_on:
+      - api-node
