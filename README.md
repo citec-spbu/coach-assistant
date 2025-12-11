@@ -141,6 +141,8 @@ npm run dev
 ```
 Запуск чарез Docker Desktop
 
+требуеться скачать Docker Desktop
+
 1. Убедись, что Docker Desktop запущен
 
 В корневой папке проекта проверте Docker
@@ -156,7 +158,7 @@ docker compose up --build       # сборка + запуск
 ```
 Ожидать 5-10 минут.
 
-6. Если зависло — проверь статус
+Если зависло — проверте статус
 ```bash
 docker compose ps               # статус контейнеров
 docker compose logs -f          # живые логи
