@@ -358,7 +358,7 @@ const handleDrop = (e) => {
   tmpVideo.preload = 'metadata';
   tmpVideo.src = url;
   tmpVideo.onloadedmetadata = () => {
-    if (tmpVideo.videoWidth !== 1920 || tmpVideo.videoHeight !== 1080) {
+    if (tmpVideo.videoWidth < 1920 || tmpVideo.videoHeight < 1080) {
       alert(`Видео не соответствует требуемому разрешению 1920x1080. Загружено: ${tmpVideo.videoWidth}x${tmpVideo.videoHeight}`);
       URL.revokeObjectURL(url);
       return;
