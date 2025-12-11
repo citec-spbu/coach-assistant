@@ -121,17 +121,44 @@ python training/train.py --config training/config.yaml
 
 Установить FFmpeg для Windows.
 
-Создать package.json
-npm init -y
+Запуск проекте из командной строки 
 
-1. Установить зависимости
+1. Установить все зависимости
+```bash
 npm install
-
+```
 2. В одном терминале — Node‑сервер
+```bash
 node server.cjs
-
+```
 3. Во втором терминале — Python‑бэкенд (анализ видео)
+```bash
 py main.py          # или python main.py, если так настроено окружение
-
+```
 4. В третьем терминале — фронтенд
+```bash
 npm run dev
+```
+Запуск чарез Docker Desktop
+
+1. Убедись, что Docker Desktop запущен
+
+В корневой папке проекта проверте Docker
+```bash
+docker --version
+docker compose version
+Если ошибки — Docker Desktop не запустился.
+```
+2. Запуск проекта
+```bash
+docker compose down -v          # очистка старых контейнеров
+docker compose up --build       # сборка + запуск
+```
+Ожидать 5-10 минут.
+
+6. Если зависло — проверь статус
+```bash
+docker compose ps               # статус контейнеров
+docker compose logs -f          # живые логи
+docker compose logs backend-py  # логи только бэкенда
+```
