@@ -121,6 +121,9 @@ python training/train.py --config training/config.yaml
 
 Установить FFmpeg для Windows.
 
+Создать package.json
+npm init -y
+
 1. Установить зависимости
 npm install
 
