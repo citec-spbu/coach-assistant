@@ -129,12 +129,15 @@ async def process_video(path: str):
 
             predictor_result = predictor.predict_from_poses(result["poses_file"], video_path="outputs/"+submit_dir.replace("\\", "/"))
 
+            print("=== RAW predictor_result ===")
+            print(json.dumps(predictor_result, indent=2, default=str))
+            print("=== END RAW ===")
+
             print("predictor_result:", predictor_result)
             if predictor_result['success']:
                 print(f"Движение: {predictor_result['predicted_figure']}")
                 print(f"Уверенность: {predictor_result['confidence']:.2%}")
 
-                # Новые метрики качества
                 if 'spatial_similarity' in predictor_result:
                     print(f"Техника: {predictor_result['spatial_similarity']['score']:.1f}/100")
                 if 'classifier_clarity' in predictor_result:
@@ -151,14 +154,15 @@ async def process_video(path: str):
         not isinstance(predictor_result["predicted_figure"], np.ndarray):
             predictor_result["predicted_figure"] = [predictor_result["predicted_figure"]]
         data = {
-            "figures": [str(figure) for figure in predictor_result["predicted_figure"]],
-            "confidence": predictor_result['confidence'],
-            #"timing": predictor_result['timing']['score'],
-            "classifier_clarity": predictor_result['classifier_clarity']['score'],
-            "spatial_similarity": predictor_result['spatial_similarity']['score'],
-            "balance": predictor_result['balance']['score']
+            "confidence": predictor_result.get("confidence", 0),
+            "figures": [predictor_result.get("predicted_figure", "NotPerforming")],
+            "spatial_similarity": predictor_result.get("spatial_similarity", {}).get("score", 0),
+            "timing": predictor_result.get("timing", {}).get("score", 0),
+            "balance": predictor_result.get("balance", {}).get("score", 0),
+            "classifier_clarity": predictor_result.get("classifier_clarity", {}).get("score", 0),
+            "error_details": generate_error_details(predictor_result),
         }
-
+        print(f"data={data}")
     except Exception as e:
         print(e)
     download_url = str(submit_dir.replace("\\", "/"))
@@ -202,6 +206,80 @@ async def post_path(url: UrlBody, background_task: BackgroundTasks):
                               download_url=None
                           ).model_dump())
 
+def generate_error_details(predictor_result):
+    error_details = {
+        "spatial_similarity": [],
+        "timing": [],
+        "balance": [],
+        "classifier_clarity": []
+    }
+    
+    try:
+        spatial = predictor_result.get('spatial_similarity', {})
+        if spatial.get('error_segments') and spatial['error_segments']:
+            for seg in spatial['error_segments']:
+                error_details["spatial_similarity"].append({
+                    "time": f"{seg.get('start_time', 0):.2f}",
+                    "issue": f"DTW {seg.get('distance', 0):.1f}",
+                    "score": int(spatial.get('score', 0))
+                })
+        elif spatial.get('note'):
+            error_details["spatial_similarity"] = [{
+                "time": "—",
+                "issue": spatial['note'][:50] + "...",
+                "score": int(spatial.get('score', 0))
+            }]
+        
+        balance = predictor_result.get('balance', {})
+        if balance.get('error_segments') and balance['error_segments']:
+            for seg in balance['error_segments']:
+                error_details["balance"].append({
+                    "time": f"{seg.get('start_time', 0):.2f}",
+                    "issue": f"Смещение {getattr(seg, 'mean_com_offset_norm', 0)*100:.0f}%",
+                    "score": int(balance.get('score', 0))
+                })
+                if hasattr(seg, 'mean_tilt_deg'):
+                    error_details["balance"].append({
+                        "time": f"{seg.get('end_time', 0):.2f}",
+                        "issue": f"Наклон {seg.mean_tilt_deg:.1f}°",
+                        "score": int(balance.get('score', 0))
+                    })
+        
+        clarity = predictor_result.get('classifier_clarity', {})
+        if clarity.get('error_segments') and clarity['error_segments']:
+            for seg in clarity['error_segments']:
+                error_details["classifier_clarity"].append({
+                    "time": f"{seg.get('start_time', 0):.2f}",
+                    "issue": f"Нечеткость {seg.get('mean_confidence', 0):.0%}",
+                    "score": int(clarity.get('score', 0))
+                })
+        
+        timing = predictor_result.get('timing', {})
+        if timing.get('error'):
+            error_details["timing"] = [{
+                "time": "—",
+                "issue": timing['error'][:40] + "...",
+                "score": int(timing.get('score', 0))
+            }]
+        elif timing.get('error_segments'):
+            for seg in timing['error_segments']:
+                error_details["timing"].append({
+                    "time": f"{seg.get('start_time', 0):.2f}",
+                    "issue": f"Опоздание {seg.get('delay', 0)*1000:.0f}мс",
+                    "score": int(timing.get('score', 0))
+                })
+    
+    except Exception as e:
+        print(f"Ошибка парсинга: {e}")
+        error_details["spatial_similarity"] = [{"time": "—", "issue": "Ошибка анализа", "score": 0}]
+    
+    total = sum(len(lst) for lst in error_details.values())
+    print(f" TOOLTIP'Ы: {total} ошибок для uploadpage.vue")
+    for key, errors in error_details.items():
+        if errors:
+            print(f"  {key}: {len(errors)}x | {errors[0]['time']}: {errors[0]['issue']}")
+    
+    return error_details
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
