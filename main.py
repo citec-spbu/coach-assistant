@@ -91,83 +91,74 @@ def convert_to_h264(input_path):
         raise
     except Exception as e:
         print(str(e))
+
 async def process_video(path: str):
     result = await run_pose.main(video_path=path)
     if not result["success"]:
         raise Exception(result["error"])
-    print(result)
+    
+    video_name = result["video_name"] 
+    poses_file = result["poses_file"]
     overlay_file = str(result["overlay_file"])
-    converted_file = convert_to_h264(overlay_file)
-    filename = os.path.basename(converted_file)
-    submit_dir = str(Path(result["video_name"]) / filename)
-    data = None
+    
+    data = {"confidence": 0, "figures": ["NotPerforming"], "spatial_similarity": 0, "timing": 0, "balance": 0, "classifier_clarity": 0, "error_details": {}}
+    
     try:
-        """        
         from dance_classifier.inference.predict import DanceClassifierPredictor
-        # Инициализация (один раз)
+        
         predictor = DanceClassifierPredictor(
-            model_path="best_model_10pct.pth",
-            metadata_path="metadata.json"
+            model_path="best_model_20pct.pth",
+            metadata_path="dance_classifier/dataset/metadata.json",
+            scaler_path="dance_classifier/dataset/scaler.pkl",
+            label_encoder_path="dance_classifier/dataset/label_encoder.pkl",
+            device='cpu'
         )
-        model_result = predictor.predict_from_poses(result["poses_file"])
-        print(model_result['predicted_figure'])  # "Fan"
-        """
-        #from use_classifier import classify_video
-        #classify_result = classify_video(result["poses_file"])
-        #print("result = ", classify_result)
-        try:
-            from dance_classifier.inference.predict import DanceClassifierPredictor
 
-            predictor = DanceClassifierPredictor(
-                model_path="best_model_20pct.pth",
-                metadata_path="dance_classifier/dataset/metadata.json",
-                scaler_path="dance_classifier/dataset/scaler.pkl",
-                label_encoder_path="dance_classifier/dataset/label_encoder.pkl",
-                reference_dir=None,
-                device='cpu'
-            )
-
-            predictor_result = predictor.predict_from_poses(result["poses_file"], video_path="outputs/"+submit_dir.replace("\\", "/"))
-
-            print("=== RAW predictor_result ===")
-            print(json.dumps(predictor_result, indent=2, default=str))
-            print("=== END RAW ===")
-
-            print("predictor_result:", predictor_result)
-            if predictor_result['success']:
-                print(f"Движение: {predictor_result['predicted_figure']}")
-                print(f"Уверенность: {predictor_result['confidence']:.2%}")
-
-                if 'spatial_similarity' in predictor_result:
-                    print(f"Техника: {predictor_result['spatial_similarity']['score']:.1f}/100")
-                if 'classifier_clarity' in predictor_result:
-                    print(f"Разборчивость: {predictor_result['classifier_clarity']['score']:.1f}/100")
-                if 'timing' in predictor_result:
-                    print(f"Ритм: {predictor_result['timing']['score']:.1f}/100")
-                if 'balance' in predictor_result:
-                    print(f"Баланс: {predictor_result['balance']['score']:.1f}/100")
+        predictor_result = predictor.predict_from_poses(
+            poses_file,
+            video_path=overlay_file,                    
+            overlay_video_path=overlay_file,            
+            output_dir=f"outputs/{video_name}",        
+            create_analyzed_video=True
+        )
+        
+        print("=== predictor_result ===", json.dumps(predictor_result, indent=2))
+        
+        if predictor_result.get('success'):
+            data.update({
+                "confidence": predictor_result.get("confidence", 0),
+                "figures": [predictor_result.get("predicted_figure", "NotPerforming")],
+                "spatial_similarity": predictor_result.get("spatial_similarity", {}).get("score", 0),
+                "timing": predictor_result.get("timing", {}).get("score", 0),
+                "balance": predictor_result.get("balance", {}).get("score", 0),
+                "classifier_clarity": predictor_result.get("classifier_clarity", {}).get("score", 0),
+                "error_details": generate_error_details(predictor_result)
+            })
+            
+            # Берем analyzed видео
+            analyzed_video_path = predictor_result.get('analyzed_video_path')
+            if analyzed_video_path and os.path.exists(analyzed_video_path):
+                print(f" Analyzed видео: {analyzed_video_path}")
             else:
-                print(f"Ошибка: {predictor_result['error']}")
-        except Exception as e:
-            print("error = ", str(e))
-        if not isinstance(predictor_result["predicted_figure"], list) and \
-        not isinstance(predictor_result["predicted_figure"], np.ndarray):
-            predictor_result["predicted_figure"] = [predictor_result["predicted_figure"]]
-        data = {
-            "confidence": predictor_result.get("confidence", 0),
-            "figures": [predictor_result.get("predicted_figure", "NotPerforming")],
-            "spatial_similarity": predictor_result.get("spatial_similarity", {}).get("score", 0),
-            "timing": predictor_result.get("timing", {}).get("score", 0),
-            "balance": predictor_result.get("balance", {}).get("score", 0),
-            "classifier_clarity": predictor_result.get("classifier_clarity", {}).get("score", 0),
-            "error_details": generate_error_details(predictor_result),
-        }
-        print(f"data={data}")
+                print(" Analyzed не найдено, fallback overlay")
+                analyzed_video_path = overlay_file
+        else:
+            print(f" Predictor: {predictor_result.get('error')}")
+            analyzed_video_path = overlay_file
+            
     except Exception as e:
-        print(e)
-    download_url = str(submit_dir.replace("\\", "/"))
-    print("data=", data)
+        print(f" Predictor ошибка: {e}")
+        analyzed_video_path = overlay_file
+    
+    # 2. Конвертируем analyzed (или fallback overlay)
+    converted_file = convert_to_h264(analyzed_video_path)
+    filename = os.path.basename(converted_file)
+    download_url = f"{video_name}/{filename}".replace("\\", "/")
+    
+    print(f" Финал: {download_url}")
+    print(f" {data['figures']}")
     return download_url, data
+
 
 async def safe_process(upload_url: str):
     try:
