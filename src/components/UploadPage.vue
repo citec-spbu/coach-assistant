@@ -106,27 +106,81 @@
         </div>
 
         <!-- Детальные оценки -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-4xl mx-auto">
-          <div class="bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-xl p-4 text-center border border-pink-500/30 hover:shadow-xl hover:shadow-pink-500/20 transition-all duration-300 hover:scale-105">
-            <div class="text-3xl font-bold text-pink-400">{{ analysisResult.spatial_similarity }}%</div>
-            <div class="text-gray-300 text-sm">Техника</div>
-          </div>
-          
-          <div class="bg-gradient-to-br from-violet-500/20 to-violet-600/20 rounded-xl p-4 text-center border border-violet-500/30 hover:shadow-xl hover:shadow-violet-500/20 transition-all duration-300 hover:scale-105">
-            <div class="text-3xl font-bold text-violet-400">{{ analysisResult.timing }}%</div>
-            <div class="text-gray-300 text-sm">Синхронизация</div>
-          </div>
-          
-          <div class="bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-xl p-4 text-center border border-pink-500/30 hover:shadow-xl hover:shadow-pink-500/20 transition-all duration-300 hover:scale-105">
-            <div class="text-3xl font-bold text-pink-400">{{ analysisResult.balance }}%</div>
-            <div class="text-gray-300 text-sm">Баланс</div>
-          </div>
-          
-          <div class="bg-gradient-to-br from-violet-500/20 to-violet-600/20 rounded-xl p-4 text-center border border-violet-500/30 hover:shadow-xl hover:shadow-violet-500/20 transition-all duration-300 hover:scale-105">
-            <div class="text-3xl font-bold text-violet-400">{{ analysisResult.classifier_clarity }}%</div>
-            <div class="text-gray-300 text-sm">Разборчивость</div>
-          </div>
-        </div>
+        <!-- Детальные оценки С TOOLTIP'ами -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8 max-w-4xl mx-auto">
+  <!-- Техника -->
+  <div class="group relative bg-gradient-to-br from-pink-500/20 to-pink-600/20 
+              rounded-xl p-6 text-center border border-pink-500/30 
+              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+    <div class="text-3xl font-bold text-pink-400 group-hover:text-white mb-2 transition-colors">
+      {{ analysisResult.spatial_similarity || 50 }}%
+    </div>
+    <div class="text-gray-300 text-sm font-semibold mb-1">Техника</div>
+    
+    <!-- Tooltip -->
+    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
+                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
+                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
+                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
+      {{ getSpatialError() }}
+    </div>
+  </div>
+
+  <!-- Синхронизация -->
+  <div class="group relative bg-gradient-to-br from-violet-500/20 to-violet-600/20 
+              rounded-xl p-6 text-center border border-violet-500/30 
+              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+    <div class="text-3xl font-bold text-violet-400 group-hover:text-white mb-2 transition-colors">
+      {{ analysisResult.timing || 0 }}%
+    </div>
+    <div class="text-gray-300 text-sm font-semibold mb-1">Синхронизация</div>
+    
+    <!-- Tooltip -->
+    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
+                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
+                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
+                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
+      {{getTimingError()}}
+    </div>
+  </div>
+
+  <!-- Баланс -->
+  <div class="group relative bg-gradient-to-br from-pink-500/20 to-pink-600/20 
+              rounded-xl p-6 text-center border border-pink-500/30 
+              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+    <div class="text-3xl font-bold text-pink-400 group-hover:text-white mb-2 transition-colors">
+      {{ analysisResult.balance || 0 }}%
+    </div>
+    <div class="text-gray-300 text-sm font-semibold mb-1">Баланс</div>
+    
+    <!-- Tooltip -->
+    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
+                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
+                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
+                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
+      {{getBalanceError()}}
+    </div>
+  </div>
+
+  <!-- Разборчивость -->
+  <div class="group relative bg-gradient-to-br from-violet-500/20 to-violet-600/20 
+              rounded-xl p-6 text-center border border-violet-500/30 
+              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+    <div class="text-3xl font-bold text-violet-400 group-hover:text-white mb-2 transition-colors">
+      {{ analysisResult.classifier_clarity || 0 }}%
+    </div>
+    <div class="text-gray-300 text-sm font-semibold mb-1">Разборчивость</div>
+    
+    <!-- Tooltip -->
+    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
+                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
+                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
+                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
+      {{getClarityError()}}
+    </div>
+  </div>
+</div>
+
 
 
 
@@ -224,6 +278,7 @@ onMounted(() => {
       balance: Math.round(result.balance),
       classifier_clarity: Math.round(result.classifier_clarity),
       spatial_similarity: Math.round(result.spatial_similarity),
+      error_details: result.error_details || {},
       feedback: [getFigure(result.figures)]
     };
 
@@ -270,6 +325,29 @@ const getFigure = (figure) => {
   return Figures[figure];
 }
 
+const getErrors = (key) => {
+  return analysisResult.value?.error_details?.[key] || [];
+};
+
+const getSpatialError = () => {
+  const error = getErrors('spatial_similarity')[0];
+  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
+};
+
+const getTimingError = () => {
+  const error = getErrors('timing')[0];
+  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
+};
+
+const getBalanceError = () => {
+  const error = getErrors('balance')[0];
+  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
+};
+
+const getClarityError = () => {
+  const error = getErrors('classifier_clarity')[0];
+  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
+};
 
 const formatTime = (time) => {
   const hours = Math.floor(time / 3600)
@@ -471,6 +549,4 @@ const handleAnalyze = async (blobValue) => {
     isAnalyzing.value = false;
   }
 };
-
-
 </script>
