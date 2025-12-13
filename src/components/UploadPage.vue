@@ -106,79 +106,24 @@
         </div>
 
         <!-- Детальные оценки -->
-        <!-- Детальные оценки С TOOLTIP'ами -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8 max-w-4xl mx-auto">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 max-w-4xl mx-auto">
   <!-- Техника -->
-  <div class="group relative bg-gradient-to-br from-pink-500/20 to-pink-600/20 
-              rounded-xl p-6 text-center border border-pink-500/30 
-              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
-    <div class="text-3xl font-bold text-pink-400 group-hover:text-white mb-2 transition-colors">
-      {{ analysisResult.spatial_similarity || 50 }}%
-    </div>
-    <div class="text-gray-300 text-sm font-semibold mb-1">Техника</div>
-    
-    <!-- Tooltip -->
-    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
-                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
-                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
-                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
-      {{ getSpatialError() }}
-    </div>
-  </div>
-
-  <!-- Синхронизация -->
-  <div class="group relative bg-gradient-to-br from-violet-500/20 to-violet-600/20 
-              rounded-xl p-6 text-center border border-violet-500/30 
-              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
-    <div class="text-3xl font-bold text-violet-400 group-hover:text-white mb-2 transition-colors">
-      {{ analysisResult.timing || 0 }}%
-    </div>
-    <div class="text-gray-300 text-sm font-semibold mb-1">Синхронизация</div>
-    
-    <!-- Tooltip -->
-    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
-                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
-                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
-                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
-      {{getTimingError()}}
-    </div>
-  </div>
+  <button @click="openModal('spatial_similarity')" class="group bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-2xl p-8 text-center border-2 border-pink-500/30 hover:border-pink-500 hover:shadow-2xl hover:scale-[1.05] transition-all duration-300 cursor-pointer hover:bg-pink-500/30">
+    <div class="text-4xl font-black text-pink-400 group-hover:text-white mb-3 transition-all">{{ analysisResult.spatial_similarity || 0 }}%</div>
+    <div class="text-xl font-bold text-white/90 tracking-wide">Техника</div>
+  </button>
 
   <!-- Баланс -->
-  <div class="group relative bg-gradient-to-br from-pink-500/20 to-pink-600/20 
-              rounded-xl p-6 text-center border border-pink-500/30 
-              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
-    <div class="text-3xl font-bold text-pink-400 group-hover:text-white mb-2 transition-colors">
-      {{ analysisResult.balance || 0 }}%
-    </div>
-    <div class="text-gray-300 text-sm font-semibold mb-1">Баланс</div>
-    
-    <!-- Tooltip -->
-    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
-                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
-                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
-                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
-      {{getBalanceError()}}
-    </div>
-  </div>
+  <button @click="openModal('balance')" class="group bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-2xl p-8 text-center border-2 border-pink-500/30 hover:border-pink-500 hover:shadow-2xl hover:scale-[1.05] transition-all duration-300 cursor-pointer hover:bg-pink-500/30">
+    <div class="text-4xl font-black text-pink-400 group-hover:text-white mb-3 transition-all">{{ analysisResult.balance || 0 }}%</div>
+    <div class="text-xl font-bold text-white/90 tracking-wide">Баланс</div>
+  </button>
 
-  <!-- Разборчивость -->
-  <div class="group relative bg-gradient-to-br from-violet-500/20 to-violet-600/20 
-              rounded-xl p-6 text-center border border-violet-500/30 
-              hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
-    <div class="text-3xl font-bold text-violet-400 group-hover:text-white mb-2 transition-colors">
-      {{ analysisResult.classifier_clarity || 0 }}%
-    </div>
-    <div class="text-gray-300 text-sm font-semibold mb-1">Разборчивость</div>
-    
-    <!-- Tooltip -->
-    <div class="absolute -top-2 left-1/2 -translate-x-1/2 px-3 py-2 bg-gray-900/95 
-                backdrop-blur-sm text-white text-xs rounded-lg shadow-2xl border 
-                border-gray-700/50 opacity-0 invisible group-hover:opacity-100 
-                group-hover:visible transition-all duration-300 z-50 whitespace-nowrap">
-      {{getClarityError()}}
-    </div>
-  </div>
+  <!-- Четкость -->
+  <button @click="openModal('classifier_clarity')" class="group bg-gradient-to-br from-pink-500/20 to-pink-600/20 rounded-2xl p-8 text-center border-2 border-pink-500/30 hover:border-pink-500 hover:shadow-2xl hover:scale-[1.05] transition-all duration-300 cursor-pointer hover:bg-pink-500/30">
+    <div class="text-4xl font-black text-pink-400 group-hover:text-white mb-3 transition-all">{{ analysisResult.classifier_clarity || 0 }}%</div>
+    <div class="text-xl font-bold text-white/90 tracking-wide">Четкость</div>
+  </button>
 </div>
 
 
@@ -231,10 +176,63 @@
       </div>
     </div>
   </div>
+
+<div v-if="showModal" class="fixed inset-0 bg-black/75 backdrop-blur-md z-[1000] flex items-center justify-center p-4" @click.self="closeModal">
+  <div class="bg-gray-900/95 backdrop-blur-xl rounded-3xl max-w-4xl max-h-[90vh] w-full overflow-hidden shadow-2xl border-4 border-white/20">
+    <div class="bg-gradient-to-r from-pink-500 to-violet-500 p-8 flex justify-between items-center">
+      <div>
+        <h2 class="text-3xl font-black text-white">{{ modalTitle }}</h2>
+        <p class="text-white/80 text-lg mt-1">Детальный анализ ошибок</p>
+      </div>
+      <button @click="closeModal" class="w-14 h-14 bg-white/20 hover:bg-white/30 rounded-2xl flex items-center justify-center text-white text-2xl font-bold hover:scale-110 transition-all">×</button>
+    </div>
+    
+   <div class="p-8 overflow-y-auto max-h-[60vh]">
+  <div v-if="modalErrorSegments.length === 0" class="text-center py-20 text-emerald-400">
+    <div class="text-6xl mb-6"></div>
+    <h3 class="text-3xl font-bold mb-4">Идеально!</h3>
+    <p class="text-xl text-gray-300">Нет критических ошибок</p>
+  </div>
+  
+  <div v-else class="space-y-6">
+    <div v-for="(segment, idx) in modalErrorSegments" :key="idx" 
+         class="bg-gray-800/50 p-8 rounded-2xl border-l-4 border-pink-400">
+      
+      <!-- Время -->
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-gray-600">
+        <span class="text-lg font-mono text-gray-300">
+           {{ formatModalTime(segment.time) }}
+        </span>
+        <span class="px-3 py-1 bg-pink-500/30 text-pink-300 font-bold rounded-full text-sm">
+          Сегмент {{ idx + 1 }}
+        </span>
+      </div>
+      
+      <!-- Описание проблемы -->
+      <div class="mb-6">
+        <h4 class="text-xl font-bold text-white mb-2">{{ segment.issue }}</h4>
+        <div class="text-4xl font-black text-pink-400">{{ segment.score }}%</div>
+      </div>
+      
+      <!-- Общий балл метрики -->
+      <div class="text-right">
+        <span class="text-lg text-gray-400">Метрика: {{ getMetricScore(modalType) }}%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+    <div class="p-8 bg-gray-800/50 border-t border-gray-700 flex justify-between items-center">
+      <span class="text-3xl font-black text-white">Общий балл: {{ getMetricScore(modalType) }}%</span>
+      <button @click="closeModal" class="bg-gradient-to-r from-pink-500 to-violet-500 text-white px-12 py-4 rounded-2xl font-bold hover:scale-105">Закрыть</button>
+    </div>
+  </div>
+</div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 import axios from 'axios'
 import { ArrowLeft, Music, Upload, Zap, Play, Download } from 'lucide-vue-next'
@@ -257,6 +255,44 @@ let socket = null
 const processedVideoUrl = ref(null)
 const uploadedFile = ref(null);
 
+const showModal = ref(false)
+const modalType = ref('')
+
+const modalTitles = {
+  spatial_similarity: 'Техника',
+  balance: 'Баланс', 
+  classifier_clarity: 'Четкость'
+}
+
+function openModal(type) { modalType.value = type; showModal.value = true }
+function closeModal() { showModal.value = false }
+
+const modalErrorSegments = computed(() => {
+  const segments = analysisResult.value?.error_details?.[modalType.value]
+  return Array.isArray(segments) ? segments : []
+})
+
+const modalTitle = computed(() => modalTitles[modalType.value] || modalType.value)
+
+function formatModalTime(timeStr) {
+  if (!timeStr || timeStr === '—') return '0:00.000'
+  
+  const time = parseFloat(timeStr)
+  if (isNaN(time)) return '0:00.000'
+  
+  const mins = Math.floor(time / 60) || 0
+  const secs = Math.floor(time % 60)
+  const ms = Math.floor((time % 1) * 1000)
+  
+  return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+}
+
+
+function getMetricScore(type) {
+  return analysisResult.value?.[type] || 0
+}
+
+
 onMounted(() => {
   socket = io()
   
@@ -274,7 +310,6 @@ onMounted(() => {
     const result = JSON.parse(data.metadata);
     analysisResult.value = {
       overall: Math.round(result.confidence * 100),
-      timing: Math.round(result.timing * 100),
       balance: Math.round(result.balance),
       classifier_clarity: Math.round(result.classifier_clarity),
       spatial_similarity: Math.round(result.spatial_similarity),
@@ -324,30 +359,6 @@ const getFigure = (figure) => {
   };
   return Figures[figure];
 }
-
-const getErrors = (key) => {
-  return analysisResult.value?.error_details?.[key] || [];
-};
-
-const getSpatialError = () => {
-  const error = getErrors('spatial_similarity')[0];
-  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
-};
-
-const getTimingError = () => {
-  const error = getErrors('timing')[0];
-  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
-};
-
-const getBalanceError = () => {
-  const error = getErrors('balance')[0];
-  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
-};
-
-const getClarityError = () => {
-  const error = getErrors('classifier_clarity')[0];
-  return error ? `${error.time}: ${error.issue}` : 'Нет данных';
-};
 
 const formatTime = (time) => {
   const hours = Math.floor(time / 3600)
@@ -549,4 +560,6 @@ const handleAnalyze = async (blobValue) => {
     isAnalyzing.value = false;
   }
 };
+
+
 </script>
