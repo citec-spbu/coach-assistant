@@ -11,7 +11,7 @@ iou: 0.50
 vid_stride: 1                   # Inference every few frames, 1 means every frame
 
 # Visualization
-save_overlay: true
+save_overlay: True
 overlay_fps: null               # null = Use the source video FPS
 kp_score_thresh: 0.35
 line_thickness: 2

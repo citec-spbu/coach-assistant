@@ -10,14 +10,23 @@ def select_largest_box(boxes_xywh):
     return int(np.argmax(areas))
 
 class PoseExtractor:
+    # def __init__(self, model_name="yolov8s-pose.pt", device="0", imgsz=640, conf=0.25, iou=0.5, vid_stride=1):
+    #     self.model = YOLO(model_name)
+    #
+    #     # Всегда используем CPU (безопасно)
+    #     actual_device = "cpu"
+    #
+    #     self.kw = dict(device=actual_device, imgsz=imgsz, conf=conf, iou=iou, vid_stride=vid_stride)
     def __init__(self, model_name="yolov8s-pose.pt", device="0", imgsz=640, conf=0.25, iou=0.5, vid_stride=1):
         self.model = YOLO(model_name)
-        
-        # Всегда используем CPU (безопасно)
-        actual_device = "cpu"
-        
-        self.kw = dict(device=actual_device, imgsz=imgsz, conf=conf, iou=iou, vid_stride=vid_stride)
 
+        # === FIX: Использовать переданный device, а не хардкод cpu ===
+        # Если device="0" (или "cuda:0"), ultralytics поймет это правильно
+        actual_device = device
+
+        print(f"   [PoseExtractor] Initialized on device: {actual_device}")  # Добавим лог для проверки
+
+        self.kw = dict(device=actual_device, imgsz=imgsz, conf=conf, iou=iou, vid_stride=vid_stride)
     def infer_frame(self, frame):
         """For single-frame inference, return (valid, bbox_xywh, keypoints_xyc[J,3], kp_score_mean)"""
         res = self.model.predict(frame, verbose=False, **self.kw)[0]

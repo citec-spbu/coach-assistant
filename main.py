@@ -14,6 +14,7 @@ import ffmpeg
 import os
 import logging
 import json
+import torch
 # Configure basic logging to a file named 'app.log'
 # The filemode='w' will overwrite the file each time the script runs.
 # Use filemode='a' (default) to append to the file.
@@ -105,13 +106,15 @@ async def process_video(path: str):
     
     try:
         from dance_classifier.inference.predict import DanceClassifierPredictor
-        
+        # Предпочтительнее использовать CUDA, в противном случае используется ЦП.
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f"Initializing predictor on: {device}")  # Удобно для подтверждения в журнале.
         predictor = DanceClassifierPredictor(
             model_path="best_model_20pct.pth",
             metadata_path="dance_classifier/dataset/metadata.json",
             scaler_path="dance_classifier/dataset/scaler.pkl",
             label_encoder_path="dance_classifier/dataset/label_encoder.pkl",
-            device='cpu'
+            device=device
         )
 
         predictor_result = predictor.predict_from_poses(
